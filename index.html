@@ -1,0 +1,2170 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fundora</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* ---------- outer reviewer-harness tokens (theme-aware) ---------- */
+  :root{
+    --page-bg:#f3f1ea;
+    --page-surface:#fdfcf8;
+    --page-ink:#2b2a26;
+    --page-ink-soft:#6f6c62;
+    --page-border:rgba(20,20,18,.10);
+    --page-accent:#0e4f3d;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --page-bg:#15170f;
+      --page-surface:#1d2018;
+      --page-ink:#eeece4;
+      --page-ink-soft:#a5a294;
+      --page-border:rgba(255,255,255,.10);
+      --page-accent:#3fcf9e;
+    }
+  }
+  :root[data-theme="dark"]{
+    --page-bg:#15170f;
+    --page-surface:#1d2018;
+    --page-ink:#eeece4;
+    --page-ink-soft:#a5a294;
+    --page-border:rgba(255,255,255,.10);
+    --page-accent:#3fcf9e;
+  }
+
+  /* ---------- fixed Fundora product tokens (brand-locked, not theme swapped) ---------- */
+  :root{
+    --app-bg:#f7f4ec;
+    --app-surface:#ffffff;
+    --app-surface-2:#f1ede2;
+    --app-border:rgba(24,22,16,.09);
+    --app-ink:#221f1a;
+    --app-ink-soft:#716b5c;
+    --app-ink-faint:#a39c8a;
+
+    --brand:#0e4f3d;
+    --brand-ink:#0e4f3d;
+    --brand-strong:#0a3b2d;
+    --brand-bright:#1c8c6c;
+    --brand-tint:#e2f0e8;
+
+    /* categorical bucket colors — fixed order, validated CVD-safe set */
+    --cat-living:#2a78d6;
+    --cat-bills:#eb6834;
+    --cat-savings:#1baf7a;
+    --cat-emergency:#c98500;
+    --cat-family:#e87ba4;
+    --cat-wants:#2f8f3a;
+
+    --status-good-icon:#0ca30c;
+    --status-good-text:#1c6b1c;
+    --status-good-bg:#e4f5e2;
+
+    --status-warn-icon:#e0a112;
+    --status-warn-text:#8a5c0a;
+    --status-warn-bg:#fdf1d9;
+
+    --status-bad-icon:#d03b3b;
+    --status-bad-text:#a32d2a;
+    --status-bad-bg:#fbe8e6;
+
+    --r-sm:10px; --r-md:16px; --r-lg:22px; --r-pill:999px;
+    --shadow-sm:0 1px 2px rgba(20,20,18,.07);
+    --shadow-md:0 12px 28px -16px rgba(20,20,18,.28);
+    --font-display:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;
+    --font-body:'Manrope',system-ui,-apple-system,sans-serif;
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--page-bg);
+    color:var(--page-ink);
+    font-family:var(--font-body);
+    padding-inline:16px;
+    padding-block:28px;
+  }
+  button,input{font-family:inherit;}
+  button{cursor:pointer;}
+  h1,h2,h3{font-family:var(--font-display);margin:0;text-wrap:balance;}
+  @media (prefers-reduced-motion: reduce){
+    *{transition-duration:.001ms !important; animation-duration:.001ms !important;}
+  }
+  :focus-visible{outline:2px solid var(--page-accent); outline-offset:2px; border-radius:4px;}
+
+  .stage{display:flex; justify-content:center;}
+
+  /* ---------- phone frame ---------- */
+  .phone-shell{
+    position:relative;
+    width:392px;
+    height:min(844px, 88vh);
+    background:#0b0b0a;
+    border-radius:46px;
+    padding:14px;
+    box-shadow:var(--shadow-md), 0 0 0 1px rgba(0,0,0,.35);
+    flex-shrink:0;
+  }
+  .phone-notch{
+    position:absolute; top:14px; left:50%; transform:translateX(-50%);
+    width:120px; height:22px; background:#0b0b0a; border-radius:0 0 16px 16px; z-index:5;
+  }
+  .phone-screen{
+    position:relative;
+    width:100%; height:100%;
+    background:var(--app-bg);
+    border-radius:32px;
+    overflow:hidden;
+    display:flex; flex-direction:column;
+    font-family:var(--font-body);
+    color:var(--app-ink);
+  }
+  @media (max-width:560px){
+    body{padding-inline:16px;}
+    .phone-shell{width:100%; height:100dvh; border-radius:0; padding:0; box-shadow:none;}
+    .phone-notch{display:none;}
+    .phone-screen{border-radius:0;}
+  }
+
+  .app-scroll{flex:1 1 auto; overflow-y:auto; padding:1.1rem 1.15rem 1.4rem;}
+  .app-scroll::-webkit-scrollbar{width:0;}
+
+  /* ---------- shared UI ---------- */
+  .row{display:flex; align-items:center;}
+  .between{justify-content:space-between;}
+  .wordmark{display:flex; align-items:center; gap:.5rem;}
+  .f-mark{
+    width:34px; height:34px; border-radius:10px; background:var(--brand);
+    color:#fff; font-family:var(--font-display); font-weight:800; font-size:1.05rem;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+    position:relative;
+  }
+  .f-mark::after{
+    content:""; position:absolute; right:6px; bottom:7px; width:5px; height:5px;
+    border-radius:2px; background:var(--brand-bright);
+  }
+  .wordmark-text{font-family:var(--font-display); font-weight:800; font-size:1.12rem; letter-spacing:-.01em; color:var(--app-ink);}
+
+  .icon-btn{
+    width:38px; height:38px; border-radius:var(--r-pill); border:1px solid var(--app-border);
+    background:var(--app-surface); color:var(--app-ink-soft); display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+  }
+  .icon-btn.brand{background:var(--brand-tint); color:var(--brand); border-color:transparent;}
+
+  .card{
+    background:var(--app-surface); border:1px solid var(--app-border); border-radius:var(--r-lg);
+    box-shadow:var(--shadow-sm); padding:1.15rem;
+  }
+  .section-title{font-size:.98rem; font-weight:800; font-family:var(--font-display); color:var(--app-ink);}
+  .muted{color:var(--app-ink-soft);}
+  .faint{color:var(--app-ink-faint);}
+  .eyebrow{font-size:.68rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--app-ink-faint);}
+
+  .btn-primary{
+    background:var(--brand); color:#fff; border:none; border-radius:var(--r-md);
+    padding:.95rem 1.2rem; font-weight:700; font-size:.95rem; width:100%;
+    box-shadow:0 10px 22px -12px rgba(14,79,61,.55);
+  }
+  .btn-primary:active{background:var(--brand-strong);}
+  .btn-ghost{
+    background:transparent; border:1px solid var(--app-border); color:var(--app-ink);
+    border-radius:var(--r-pill); padding:.5rem 1rem; font-weight:700; font-size:.8rem;
+  }
+  .btn-soon{
+    background:var(--app-surface-2); border:1px dashed var(--app-border); color:var(--app-ink-faint);
+    border-radius:var(--r-pill); padding:.5rem .95rem; font-weight:700; font-size:.76rem;
+    display:flex; align-items:center; gap:.3rem; cursor:not-allowed;
+  }
+
+  .tabular{font-variant-numeric:tabular-nums;}
+
+  .progress-track{
+    height:8px; border-radius:var(--r-pill); background:var(--app-surface-2); overflow:hidden;
+  }
+  .progress-fill{height:100%; border-radius:var(--r-pill); transition:width .5s ease;}
+
+  .chip{
+    border:1px solid var(--app-border); background:var(--app-surface); color:var(--app-ink);
+    padding:.5rem .85rem; border-radius:var(--r-pill); font-size:.83rem; font-weight:600;
+  }
+  .chip[aria-pressed="true"]{background:var(--brand); border-color:var(--brand); color:#fff;}
+
+  .badge{
+    display:inline-flex; align-items:center; gap:.35rem; font-size:.78rem; font-weight:700;
+    padding:.32rem .65rem; border-radius:var(--r-pill);
+  }
+
+  /* ---------- bottom nav ---------- */
+  .bottom-nav{
+    flex:0 0 auto; display:flex; align-items:center; justify-content:space-around;
+    padding:.55rem .6rem calc(.6rem + env(safe-area-inset-bottom,0px));
+    background:var(--app-surface); border-top:1px solid var(--app-border);
+  }
+  .nav-item{
+    display:flex; flex-direction:column; align-items:center; gap:.2rem; background:none; border:none;
+    color:var(--app-ink-faint); font-size:.66rem; font-weight:700; padding:.3rem .5rem; width:56px;
+  }
+  .nav-item[aria-current="true"]{color:var(--brand);}
+  .nav-fab{
+    width:52px; height:52px; border-radius:var(--r-pill); background:var(--brand); color:#fff;
+    display:flex; align-items:center; justify-content:center; border:none; margin-top:-26px;
+    box-shadow:0 12px 22px -10px rgba(14,79,61,.6); flex-shrink:0;
+  }
+  .nav-fab[aria-current="true"]{background:var(--brand-strong);}
+
+  /* ---------- page header ---------- */
+  .page-head{margin-bottom:1.1rem;}
+  .page-title{font-size:1.3rem; font-weight:800;}
+  .page-sub{color:var(--app-ink-soft); font-size:.85rem; margin-top:.2rem;}
+
+  /* ---------- goals / bucket rows ---------- */
+  .bucket-row{padding-bottom:.9rem;}
+  .bucket-row + .bucket-row{margin-top:0; padding-top:.9rem; border-top:1px solid var(--app-border);}
+  .bucket-row:last-child{padding-bottom:0;}
+  .bucket-icon{
+    width:40px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center;
+    flex-shrink:0; color:#fff;
+  }
+
+  /* ---------- onboarding ---------- */
+  .ob-dot{width:7px; height:7px; border-radius:50%; background:var(--app-border);}
+  .ob-dot[aria-current="true"]{background:var(--brand); width:20px; border-radius:4px;}
+
+  /* ---------- plan screen ---------- */
+  .plan-row{border:1px solid var(--app-border); border-radius:var(--r-md); padding:.9rem .95rem;}
+  .plan-row + .plan-row{margin-top:.65rem;}
+  .stepper{display:flex; align-items:center; gap:.5rem;}
+  .stepper-btn{
+    width:30px; height:30px; border-radius:var(--r-pill); border:1px solid var(--app-border);
+    background:var(--app-surface-2); color:var(--app-ink); font-weight:800; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .stepper-btn:active{background:var(--brand-tint); color:var(--brand); border-color:var(--brand);}
+  .pct-input{
+    width:3.4rem; text-align:center; font-weight:800; font-size:.92rem; font-family:var(--font-display);
+    border:1px solid var(--app-border); border-radius:var(--r-sm); padding:.4rem .2rem;
+    background:var(--app-surface); color:var(--app-ink);
+  }
+  .delete-btn{
+    width:28px; height:28px; border-radius:var(--r-pill); border:1px solid var(--status-bad-icon);
+    background:transparent; color:var(--status-bad-icon); display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+  }
+  .btn-add-bucket{
+    width:100%; border:1.5px dashed var(--app-border); background:var(--app-surface); color:var(--brand);
+    border-radius:var(--r-lg); padding:.95rem; font-weight:700; font-size:.88rem;
+    display:flex; align-items:center; justify-content:center; gap:.4rem;
+  }
+  .switch{
+    position:relative; width:44px; height:26px; border-radius:var(--r-pill); background:var(--app-surface-2);
+    border:1px solid var(--app-border); flex-shrink:0; padding:0;
+  }
+  .switch[aria-checked="true"]{background:var(--brand); border-color:var(--brand);}
+  .switch-knob{
+    position:absolute; top:1px; left:1px; width:22px; height:22px; border-radius:50%; background:#fff;
+    box-shadow:var(--shadow-sm); transition:transform .18s ease;
+  }
+  .switch[aria-checked="true"] .switch-knob{transform:translateX(18px);}
+  .modal-backdrop{
+    position:absolute; inset:0; background:rgba(10,10,8,.5); z-index:40;
+    display:flex; align-items:flex-end; justify-content:center;
+  }
+  .modal-sheet{
+    width:100%; background:var(--app-surface); border-radius:24px 24px 0 0;
+    padding:1.1rem 1.25rem calc(1.3rem + env(safe-area-inset-bottom,0px));
+    box-shadow:0 -14px 30px rgba(0,0,0,.25);
+  }
+
+  /* ---------- settings screen ---------- */
+  .settings-row{
+    width:100%; background:none; border:none; padding:.85rem 0; text-align:left;
+    display:flex; align-items:center; justify-content:space-between; color:inherit; font:inherit; gap:.6rem;
+  }
+  .settings-row + .settings-row{border-top:1px solid var(--app-border);}
+  .seg{display:flex; gap:.4rem; background:var(--app-surface-2); padding:.3rem; border-radius:var(--r-pill);}
+  .seg-btn{
+    flex:1; border:none; background:transparent; padding:.5rem .4rem; border-radius:var(--r-pill);
+    font-weight:700; font-size:.8rem; color:var(--app-ink-faint);
+  }
+  .seg-btn[aria-pressed="true"]{background:var(--app-surface); color:var(--app-ink); box-shadow:var(--shadow-sm);}
+</style>
+
+<div class="stage">
+  <div class="phone-shell">
+    <div class="phone-notch"></div>
+    <div class="phone-screen" id="root"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+
+<script type="text/babel" data-type="module">
+const {useState, useEffect, useRef} = React;
+
+/* ============================== icons ============================== */
+const Icon = ({children, size=22, className}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    {children}
+  </svg>
+);
+const HomeIcon=p=><Icon {...p}><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/></Icon>;
+const SlidersIcon=p=><Icon {...p}><line x1="4" y1="6" x2="20" y2="6"/><circle cx="14" cy="6" r="2" fill="currentColor" stroke="none"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="8" cy="12" r="2" fill="currentColor" stroke="none"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="17" cy="18" r="2" fill="currentColor" stroke="none"/></Icon>;
+const PlusIcon=p=><Icon {...p}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></Icon>;
+const TargetIcon=p=><Icon {...p}><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4.3"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/></Icon>;
+const TrendUpIcon=p=><Icon {...p}><polyline points="4,17 10,10 14,14 20,6"/><polyline points="14,6 20,6 20,12"/></Icon>;
+const GearIcon=p=>(<Icon {...p}><circle cx="12" cy="12" r="3"/>{[0,60,120,180,240,300].map(a=><rect key={a} x="10.6" y="1.6" width="2.8" height="4.2" rx="1" transform={`rotate(${a} 12 12)`}/>)}</Icon>);
+const ChevronRightIcon=p=><Icon {...p}><polyline points="9,6 15,12 9,18"/></Icon>;
+const ChevronLeftIcon=p=><Icon {...p}><polyline points="15,6 9,12 15,18"/></Icon>;
+const MinusIcon=p=><Icon {...p}><line x1="5" y1="12" x2="19" y2="12"/></Icon>;
+const XIcon=p=><Icon {...p}><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></Icon>;
+const TransferIcon=p=><Icon {...p}><path d="M7 3v14"/><polyline points="3,13 7,17 11,13"/><path d="M17 21V7"/><polyline points="13,11 17,7 21,11"/></Icon>;
+const ArrowDownCircleIcon=p=><Icon {...p}><circle cx="12" cy="12" r="9"/><polyline points="8,11 12,15 16,11"/><line x1="12" y1="8" x2="12" y2="15"/></Icon>;
+const ArrowUpCircleIcon=p=><Icon {...p}><circle cx="12" cy="12" r="9"/><polyline points="8,13 12,9 16,13"/><line x1="12" y1="9" x2="12" y2="16"/></Icon>;
+const CheckCircleIcon=p=><Icon {...p}><circle cx="12" cy="12" r="9"/><polyline points="8,12.5 11,15.5 16,9"/></Icon>;
+const AlertTriangleIcon=p=><Icon {...p}><path d="M12 3.5 21.5 20h-19Z"/><line x1="12" y1="9.5" x2="12" y2="14"/><circle cx="12" cy="17" r="0.9" fill="currentColor" stroke="none"/></Icon>;
+const WalletIcon=p=><Icon {...p}><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h13A1.5 1.5 0 0 1 19 7.5V9h1.5A1.5 1.5 0 0 1 22 10.5v7A1.5 1.5 0 0 1 20.5 19h-16A1.5 1.5 0 0 1 3 17.5Z"/><path d="M16 13.2h2.2"/></Icon>;
+const ShieldIcon=p=><Icon {...p}><path d="M12 3 4.5 6v6c0 5 3.2 8 7.5 9 4.3-1 7.5-4 7.5-9V6Z"/></Icon>;
+const ShieldCheckIcon=p=><Icon {...p}><path d="M12 3 4.5 6v6c0 5 3.2 8 7.5 9 4.3-1 7.5-4 7.5-9V6Z"/><polyline points="9,12 11.2,14.2 15.5,9.5"/></Icon>;
+const ReceiptIcon=p=><Icon {...p}><path d="M6 3h12v17l-2.5-1.5L13 20l-2.5-1.5L8 20l-2-1.5Z"/><line x1="8.5" y1="8" x2="15.5" y2="8"/><line x1="8.5" y1="11.5" x2="15.5" y2="11.5"/></Icon>;
+const SproutIcon=p=><Icon {...p}><path d="M12 21v-8"/><path d="M12 13c0-4 -3-6-7-6 0 4 3 6 7 6Z"/><path d="M12 11c0-3.5 2.5-5.5 6-5.5 0 3.5-2.5 5.5-6 5.5Z"/></Icon>;
+const UsersIcon=p=><Icon {...p}><circle cx="9" cy="8" r="3"/><path d="M3.5 19c0-3.3 2.5-5.5 5.5-5.5s5.5 2.2 5.5 5.5"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 13.2c2.6.3 4.5 2.2 4.5 5.3"/></Icon>;
+const BagIcon=p=><Icon {...p}><path d="M6.5 8h11l-.9 11.1a1.5 1.5 0 0 1-1.5 1.4H8.9a1.5 1.5 0 0 1-1.5-1.4Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></Icon>;
+const LockIcon=p=><Icon {...p}><rect x="5.5" y="10.5" width="13" height="9" rx="1.8"/><path d="M8.5 10.5V7.8a3.5 3.5 0 0 1 7 0v2.7"/></Icon>;
+const CalendarIcon=p=><Icon {...p}><rect x="3.5" y="5" width="17" height="16" rx="2"/><line x1="3.5" y1="9.5" x2="20.5" y2="9.5"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/></Icon>;
+const BellIcon=p=><Icon {...p}><path d="M6 10.5a6 6 0 0 1 12 0c0 4 1.3 5.3 1.8 6H4.2c.5-.7 1.8-2 1.8-6Z"/><path d="M10 19a2 2 0 0 0 4 0"/></Icon>;
+const UserIcon=p=><Icon {...p}><circle cx="12" cy="8.5" r="3.5"/><path d="M4.5 20c0-4.2 3.4-6.5 7.5-6.5s7.5 2.3 7.5 6.5"/></Icon>;
+const TagIcon=p=><Icon {...p}><path d="M11.5 3.5h6a1 1 0 0 1 1 1v6a1 1 0 0 1-.3.7l-8.4 8.4a1 1 0 0 1-1.4 0l-6.7-6.7a1 1 0 0 1 0-1.4l8.4-8.4a1 1 0 0 1 .4-.3Z"/><circle cx="16" cy="8" r="1.3" fill="currentColor" stroke="none"/></Icon>;
+const PaletteIcon=p=><Icon {...p}><path d="M12 3a9 9 0 1 0 0 18c1.2 0 1.8-.9 1.8-1.8 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.7-1.6 1.6-1.6H16a4 4 0 0 0 4-4c0-4.4-3.6-8.2-8-8.2Z"/><circle cx="8" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="7.4" r="1" fill="currentColor" stroke="none"/><circle cx="16" cy="10" r="1" fill="currentColor" stroke="none"/></Icon>;
+const CoinsIcon=p=><Icon {...p}><circle cx="12" cy="8" r="5"/><path d="M4 12c0 2.8 3.6 5 8 5s8-2.2 8-5"/><path d="M4 8v7c0 2.8 3.6 5 8 5s8-2.2 8-5V8"/></Icon>;
+const LaptopIcon=p=><Icon {...p}><rect x="4" y="5" width="16" height="10" rx="1.2"/><path d="M2.5 19.5h19l-1.5-3h-16Z"/></Icon>;
+const PlaneIcon=p=><Icon {...p}><path d="M21 3 3 10.5l6.5 2.5L12 19.5 21 3Z"/><path d="M9.5 13 21 3"/></Icon>;
+const TrashIcon=p=><Icon {...p}><path d="M4 7h16"/><path d="M9 7V4.8A1.8 1.8 0 0 1 10.8 3h2.4A1.8 1.8 0 0 1 15 4.8V7"/><path d="M6 7l1 13.2A1.8 1.8 0 0 0 8.8 22h6.4a1.8 1.8 0 0 0 1.8-1.8L18 7"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></Icon>;
+const EditIcon=p=><Icon {...p}><path d="M4 20.5 5 16l10.6-10.6a2 2 0 0 1 2.8 0l1.2 1.2a2 2 0 0 1 0 2.8L9 20 4.5 21Z"/><path d="M14 6 18 10"/></Icon>;
+const InfoIcon=p=><Icon {...p}><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><circle cx="12" cy="8" r="1" fill="currentColor" stroke="none"/></Icon>;
+const HelpIcon=p=><Icon {...p}><circle cx="12" cy="12" r="9"/><path d="M9.2 9.3a2.8 2.8 0 1 1 3.9 2.6c-.9.4-1.4 1-1.4 1.9v.4"/><circle cx="12" cy="17" r="0.9" fill="currentColor" stroke="none"/></Icon>;
+
+/* ============================== mock data ============================== */
+const PESO = n => '₱' + n.toLocaleString('en-PH');
+const INCOME = 21000;
+const CURRENT_MONTH = 'September 2026';
+
+const BUCKETS = [
+  {id:'living',    name:'Living',    pct:30, amount:6300, used:700,  kind:'spend',   color:'var(--cat-living)',    Icon:HomeIcon},
+  {id:'bills',     name:'Bills',     pct:20, amount:4200, used:400,  kind:'spend',   color:'var(--cat-bills)',     Icon:ReceiptIcon},
+  {id:'savings',   name:'Savings',   pct:20, amount:4200, used:4200, kind:'protect', color:'var(--cat-savings)',   Icon:SproutIcon},
+  {id:'emergency', name:'Emergency', pct:10, amount:2100, used:2100, kind:'protect', color:'var(--cat-emergency)', Icon:ShieldIcon},
+  {id:'family',    name:'Family',    pct:10, amount:2100, used:223,  kind:'spend',   color:'var(--cat-family)',    Icon:UsersIcon},
+  {id:'wants',     name:'Wants',     pct:10, amount:2100, used:1827, kind:'spend',   color:'var(--cat-wants)',     Icon:BagIcon},
+];
+const spentBuckets = BUCKETS.filter(b=>b.kind==='spend');
+const protectedTotal = BUCKETS.filter(b=>b.kind==='protect').reduce((s,b)=>s+b.amount,0);
+const spentTotal = spentBuckets.reduce((s,b)=>s+b.used,0);
+const availableToSpend = spentBuckets.reduce((s,b)=>s+(b.amount-b.used),0);
+
+const GOALS = [
+  {id:'emergency-fund', name:'Emergency Fund', saved:21000, target:50000, Icon:ShieldIcon, color:'var(--brand)', targetDate:'March 2027',    priority:true},
+  {id:'laptop',          name:'New Laptop',     saved:40800, target:60000, Icon:LaptopIcon, color:'var(--brand)', targetDate:'December 2026', priority:false},
+  {id:'travel',          name:'Travel',         saved:20000, target:80000, Icon:PlaneIcon,  color:'var(--brand)', targetDate:'June 2027',     priority:false},
+];
+
+const CURRENCIES = [
+  {code:'PHP', name:'Philippine Peso'},
+  {code:'USD', name:'US Dollar'},
+  {code:'EUR', name:'Euro'},
+  {code:'GBP', name:'British Pound'},
+  {code:'JPY', name:'Japanese Yen'},
+  {code:'AUD', name:'Australian Dollar'},
+  {code:'CAD', name:'Canadian Dollar'},
+  {code:'SGD', name:'Singapore Dollar'},
+];
+const INCOME_SCHEDULES = ['Weekly','Every 2 Weeks','Twice a Month','Monthly','Custom'];
+
+const BUCKET_LOOKUP = Object.fromEntries(BUCKETS.map(b=>[b.id,b]));
+// Available balance per bucket, derived from BUCKETS (no separate hard-coded source of truth):
+// spend buckets = allocated - used; protect buckets = the protected amount itself.
+const BUCKET_AVAILABLE = Object.fromEntries(
+  BUCKETS.map(b=>[b.id, b.kind==='protect' ? b.amount : b.amount - b.used])
+);
+const INCOME_SOURCES = [
+  {id:'salary', label:'Salary'}, {id:'freelance', label:'Freelance'}, {id:'bonus', label:'Bonus'},
+  {id:'side-hustle', label:'Side Hustle'}, {id:'gift', label:'Gift'}, {id:'other', label:'Other'},
+];
+
+/* ============================== tiny router ============================== */
+const ROUTES = ['onboarding','home','plan','transactions','goals','insights','settings'];
+function parseHash(){
+  const h = window.location.hash.replace(/^#\/?/, '');
+  return ROUTES.includes(h) ? h : 'home';
+}
+function useRoute(){
+  const [route, setRoute] = useState(parseHash());
+  useEffect(()=>{
+    if(!window.location.hash) window.location.hash = '#/home';
+    const onHash = () => setRoute(parseHash());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  return [route, (r)=>{ window.location.hash = '#/' + r; }];
+}
+
+/* ============================== shared bits ============================== */
+function Wordmark({size=34}){
+  return (
+    <div className="wordmark">
+      <div className="f-mark" style={{width:size,height:size}}>F</div>
+      <span className="wordmark-text">Fundora</span>
+    </div>
+  );
+}
+
+function TopBar({title, onSettings}){
+  return (
+    <div className="row between" style={{marginBottom:'1rem'}}>
+      <Wordmark/>
+      {onSettings && (
+        <button className="icon-btn" aria-label="Settings" onClick={onSettings}>
+          <GearIcon size={18}/>
+        </button>
+      )}
+    </div>
+  );
+}
+
+function Donut({segments, size=176, thickness=20}){
+  const r = (size - thickness) / 2;
+  const c = 2 * Math.PI * r;
+  const gap = 5; // px of visual separation between segments
+  let cursor = 0;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{transform:'rotate(-90deg)'}}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--app-surface-2)" strokeWidth={thickness}/>
+      {segments.map((s,i)=>{
+        const len = (s.pct/100)*c;
+        const drawn = Math.max(len - gap, 0);
+        const offset = -cursor;
+        cursor += len;
+        return (
+          <circle key={i} cx={size/2} cy={size/2} r={r} fill="none"
+                  stroke={s.color} strokeWidth={thickness} strokeLinecap="round"
+                  strokeDasharray={`${drawn} ${c-drawn}`} strokeDashoffset={offset}/>
+        );
+      })}
+    </svg>
+  );
+}
+
+function BucketRow({bucket, showBar=true}){
+  const {name, amount, used, kind, color, Icon} = bucket;
+  const remaining = amount - used;
+  const ratio = Math.min(100, Math.round((used/amount)*100));
+  const isProtect = kind==='protect';
+  return (
+    <div className="bucket-row">
+      <div className="row" style={{gap:'.8rem', alignItems:'flex-start'}}>
+        <div className="bucket-icon" style={{background:color}}><Icon size={19}/></div>
+        <div style={{flex:1, minWidth:0}}>
+          <div className="row between">
+            <div className="row" style={{gap:'.35rem'}}>
+              <span style={{fontWeight:700, fontSize:'.93rem'}}>{name}</span>
+              {isProtect && <LockIcon size={12} className="faint" aria-label="Protected"/>}
+            </div>
+            <span className="tabular" style={{fontWeight:800, fontSize:'.9rem'}}>{PESO(amount)} allocated</span>
+          </div>
+          <div className="row between" style={{marginTop:'.25rem'}}>
+            <span className="muted" style={{fontSize:'.78rem'}}>
+              {isProtect ? `${PESO(used)} protected` : `${PESO(remaining)} remaining`}
+            </span>
+            <span className="muted tabular" style={{fontSize:'.78rem', fontWeight:600}}>
+              {isProtect ? `${ratio}% funded` : `${ratio}% spent`}
+            </span>
+          </div>
+          {showBar && (
+            <div className="progress-track" style={{marginTop:'.55rem'}}>
+              <div className="progress-fill" style={{width:ratio+'%', background:color}}/>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BottomNav({route, navigate}){
+  const items = [
+    {id:'home', label:'Home', Icon:HomeIcon},
+    {id:'plan', label:'Plan', Icon:SlidersIcon},
+  ];
+  const items2 = [
+    {id:'goals', label:'Goals', Icon:TargetIcon},
+    {id:'insights', label:'Insights', Icon:TrendUpIcon},
+  ];
+  return (
+    <nav className="bottom-nav">
+      {items.map(it=>(
+        <button key={it.id} className="nav-item" aria-current={route===it.id} onClick={()=>navigate(it.id)}>
+          <it.Icon size={21}/><span>{it.label}</span>
+        </button>
+      ))}
+      <button className="nav-fab" aria-current={route==='transactions'} aria-label="Add transaction" onClick={()=>navigate('transactions')}>
+        <PlusIcon size={24}/>
+      </button>
+      {items2.map(it=>(
+        <button key={it.id} className="nav-item" aria-current={route===it.id} onClick={()=>navigate(it.id)}>
+          <it.Icon size={21}/><span>{it.label}</span>
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+/* ============================== pages ============================== */
+function HomePage({navigate}){
+  const segments = BUCKETS.map(b=>({pct:b.pct, color:b.color}));
+  return (
+    <div className="app-scroll">
+      <TopBar onSettings={()=>navigate('settings')}/>
+
+      <div className="eyebrow">Monthly Income</div>
+      <div className="tabular" style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'2.2rem', lineHeight:1.1, marginTop:'.15rem'}}>
+        {PESO(INCOME)}
+      </div>
+      <div className="muted" style={{fontSize:'.85rem', marginTop:'.25rem', fontWeight:600}}>{CURRENT_MONTH}</div>
+
+      <div className="card" style={{marginTop:'1.3rem', padding:'1.4rem 1.2rem'}}>
+        <div style={{display:'flex', justifyContent:'center', position:'relative'}}>
+          <Donut segments={segments}/>
+          <div style={{position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', textAlign:'center'}}>
+            <div style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.75rem'}}>100%</div>
+            <div className="muted" style={{fontSize:'.72rem', fontWeight:700, letterSpacing:'.05em', textTransform:'uppercase', marginTop:'.1rem'}}>Allocated</div>
+          </div>
+        </div>
+        <div style={{textAlign:'center', fontSize:'.88rem', fontWeight:600, color:'var(--brand)', marginTop:'1rem'}}>
+          Every peso has a purpose.
+        </div>
+        <div className="row" style={{flexWrap:'wrap', justifyContent:'center', gap:'.55rem .95rem', marginTop:'1.1rem', paddingTop:'1.1rem', borderTop:'1px solid var(--app-border)'}}>
+          {BUCKETS.map(b=>(
+            <div key={b.id} className="row" style={{gap:'.4rem'}}>
+              <span style={{width:8,height:8,borderRadius:99,background:b.color,display:'inline-block'}}/>
+              <span style={{fontSize:'.78rem', fontWeight:600}}>{b.name}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{marginTop:'1.5rem'}}>
+        <div className="eyebrow" style={{marginBottom:'.65rem'}}>Money Status</div>
+        <div className="card" style={{
+          background:'linear-gradient(155deg, var(--brand) 0%, var(--brand-strong) 100%)',
+          border:'none', boxShadow:'0 16px 32px -16px rgba(14,79,61,.55)', padding:'1.3rem 1.25rem'
+        }}>
+          <div className="row between" style={{alignItems:'flex-start'}}>
+            <div>
+              <div style={{color:'rgba(255,255,255,.8)', fontSize:'.76rem', fontWeight:700, letterSpacing:'.05em', textTransform:'uppercase'}}>
+                Available to Spend
+              </div>
+              <div className="tabular" style={{color:'#fff', fontFamily:'var(--font-display)', fontWeight:800, fontSize:'2.15rem', marginTop:'.35rem', lineHeight:1.1}}>
+                {PESO(availableToSpend)}
+              </div>
+            </div>
+            <div className="icon-btn" style={{background:'rgba(255,255,255,.18)', color:'#fff', border:'none', width:36, height:36}}>
+              <WalletIcon size={17}/>
+            </div>
+          </div>
+        </div>
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.65rem', marginTop:'.65rem'}}>
+          <StatTile label="Protected" value={protectedTotal} Icon={ShieldCheckIcon} tint="var(--status-good-bg)" ink="var(--status-good-text)"/>
+          <StatTile label="Spent" value={spentTotal} Icon={ReceiptIcon} tint="var(--app-surface-2)" ink="var(--app-ink-soft)"/>
+        </div>
+      </div>
+
+      <div className="row between" style={{marginTop:'1.6rem', marginBottom:'.7rem'}}>
+        <span className="section-title">Your Money</span>
+      </div>
+      <div className="card" style={{padding:'1.2rem 1.15rem'}}>
+        {BUCKETS.map(b=><BucketRow key={b.id} bucket={b}/>)}
+      </div>
+    </div>
+  );
+}
+
+function StatTile({label, value, Icon, tint, ink}){
+  return (
+    <div className="card" style={{padding:'.85rem .8rem'}}>
+      <div className="icon-btn" style={{background:tint, color:ink, border:'none', width:30, height:30, marginBottom:'.5rem'}}>
+        <Icon size={15}/>
+      </div>
+      <div className="tabular" style={{fontWeight:800, fontSize:'.98rem'}}>{PESO(value)}</div>
+      <div className="muted" style={{fontSize:'.7rem', marginTop:'.1rem'}}>{label}</div>
+    </div>
+  );
+}
+
+const PLAN_CUSTOM_PALETTE = ['#7c5cff','#0891b2','#d6455d','#7a8f2c','#b8560f'];
+const clampPct = n => Math.min(100, Math.max(0, n));
+const initialPlanBuckets = () => BUCKETS.map(b=>({id:b.id, name:b.name, pct:b.pct, kind:b.kind, color:b.color, Icon:b.Icon, custom:false}));
+
+function PlanPage({buckets, setBuckets}){
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [formName, setFormName] = useState('');
+  const [formPct, setFormPct] = useState('5');
+  const [formProtected, setFormProtected] = useState(false);
+
+  const totalPct = buckets.reduce((s,b)=>s+Number(b.pct||0),0);
+  const totalAmount = buckets.reduce((s,b)=>s+Math.round(INCOME*Number(b.pct||0)/100),0);
+  const diff = totalPct - 100;
+  const diffAmount = Math.round(INCOME*Math.abs(diff)/100);
+  const status = diff===0 ? 'ok' : diff<0 ? 'under' : 'over';
+  const statusTone = {
+    ok:   {ink:'var(--status-good-text)', icon:'var(--status-good-icon)', bg:'var(--status-good-bg)', Icon:CheckCircleIcon},
+    under:{ink:'var(--status-warn-text)', icon:'var(--status-warn-icon)', bg:'var(--status-warn-bg)', Icon:AlertTriangleIcon},
+    over: {ink:'var(--status-bad-text)',  icon:'var(--status-bad-icon)',  bg:'var(--status-bad-bg)',  Icon:AlertTriangleIcon},
+  }[status];
+
+  function adjustPct(id, delta){
+    setBuckets(bs=>bs.map(b=> b.id===id ? {...b, pct:clampPct(Number(b.pct)+delta)} : b));
+  }
+  function setPctDirect(id, raw){
+    const digits = raw.replace(/[^0-9]/g,'');
+    const n = digits==='' ? 0 : clampPct(parseInt(digits,10));
+    setBuckets(bs=>bs.map(b=> b.id===id ? {...b, pct:n} : b));
+  }
+  function removeBucket(id){
+    setBuckets(bs=>bs.filter(b=>b.id!==id));
+  }
+  function openModal(){
+    setEditingId(null);
+    setFormName(''); setFormPct('5'); setFormProtected(false); setModalOpen(true);
+  }
+  function openEditModal(bucket){
+    setEditingId(bucket.id);
+    setFormName(bucket.name);
+    setModalOpen(true);
+  }
+  function closeModal(){
+    setModalOpen(false);
+    setEditingId(null);
+  }
+  function submitAdd(e){
+    e.preventDefault();
+    if(editingId){
+      setBuckets(bs=>bs.map(b=> b.id===editingId ? {...b, name: formName.trim() || b.name} : b));
+      closeModal();
+      return;
+    }
+    const name = formName.trim() || 'New Bucket';
+    const pct = clampPct(parseInt(formPct,10) || 0);
+    const color = PLAN_CUSTOM_PALETTE[buckets.filter(b=>b.custom).length % PLAN_CUSTOM_PALETTE.length];
+    setBuckets(bs=>[...bs, {
+      id:'custom-'+Date.now(), name, pct, kind: formProtected ? 'protect' : 'spend',
+      color, Icon:TagIcon, custom:true,
+    }]);
+    closeModal();
+  }
+
+  return (
+    <>
+    <div className="app-scroll">
+      <TopBar/>
+      <div className="page-head">
+        <div className="page-title">Your Plan</div>
+        <div className="page-sub">Divide 100% of your income into buckets</div>
+      </div>
+
+      <div className="card" style={{textAlign:'center', padding:'1.5rem 1.3rem'}}>
+        <div className="eyebrow" style={{letterSpacing:'.08em'}}>Your Money Plan</div>
+        <div className="row" style={{justifyContent:'center', gap:'2rem', marginTop:'1rem'}}>
+          <div>
+            <div className="tabular" style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.6rem'}}>{PESO(INCOME)}</div>
+            <div className="muted" style={{fontSize:'.72rem', marginTop:'.15rem'}}>Monthly Income</div>
+          </div>
+          <div style={{width:1, background:'var(--app-border)'}}/>
+          <div>
+            <div className="tabular" style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.6rem', color:statusTone.ink}}>{totalPct}%</div>
+            <div className="muted" style={{fontSize:'.72rem', marginTop:'.15rem'}}>Allocated</div>
+          </div>
+        </div>
+
+        <div style={{marginTop:'1.15rem', paddingTop:'1.15rem', borderTop:'1px solid var(--app-border)'}}>
+          {status==='ok' ? (
+            <>
+              <div className="row" style={{justifyContent:'center', gap:'.4rem'}}>
+                <statusTone.Icon size={16} style={{color:statusTone.icon}}/>
+                <span style={{fontWeight:800, fontSize:'.92rem', color:statusTone.ink}}>100% Allocated</span>
+              </div>
+              <div style={{fontSize:'.85rem', color:statusTone.ink, marginTop:'.35rem'}}>&ldquo;Every peso has a purpose.&rdquo;</div>
+            </>
+          ) : (
+            <>
+              <div className="row" style={{justifyContent:'center', gap:'.4rem'}}>
+                <statusTone.Icon size={16} style={{color:statusTone.icon}}/>
+                <span style={{fontWeight:800, fontSize:'.92rem', color:statusTone.ink}}>{totalPct}% Allocated</span>
+              </div>
+              <div style={{fontWeight:700, fontSize:'.85rem', color:statusTone.ink, marginTop:'.4rem'}}>
+                {status==='under' ? `${Math.abs(diff)}% Unassigned` : `${diff}% Overallocated`}
+              </div>
+              <div style={{fontSize:'.82rem', color:statusTone.ink, marginTop:'.15rem'}}>
+                {status==='under'
+                  ? `${PESO(diffAmount)} still needs a purpose.`
+                  : `Reduce your allocations by ${PESO(diffAmount)}.`}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="row between" style={{marginTop:'1.4rem', marginBottom:'.7rem'}}>
+        <span className="section-title">Allocation</span>
+        <span className="faint" style={{fontSize:'.76rem'}}>Tap +/&minus; or type a number</span>
+      </div>
+
+      <div>
+        {buckets.map(b=>{
+          const amount = Math.round(INCOME*Number(b.pct||0)/100);
+          return (
+            <div key={b.id} className="plan-row">
+              <div className="row between" style={{alignItems:'flex-start'}}>
+                <div className="row" style={{gap:'.65rem'}}>
+                  <div className="bucket-icon" style={{background:b.color, width:38, height:38}}><b.Icon size={17}/></div>
+                  <div>
+                    <div className="row" style={{gap:'.35rem'}}>
+                      <span style={{fontWeight:700, fontSize:'.92rem'}}>{b.name}</span>
+                    </div>
+                    {b.kind==='protect' && (
+                      <div className="row" style={{gap:'.25rem', marginTop:'.1rem'}}>
+                        <LockIcon size={11} className="faint"/>
+                        <span className="faint" style={{fontSize:'.72rem', fontWeight:700}}>Protected</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div style={{textAlign:'right'}}>
+                  <div className="tabular" style={{fontWeight:800, fontSize:'.94rem'}}>{PESO(amount)}</div>
+                </div>
+              </div>
+
+              <div className="row between" style={{marginTop:'.85rem'}}>
+                <div className="stepper">
+                  <button type="button" className="stepper-btn" aria-label={`Decrease ${b.name} percentage`} onClick={()=>adjustPct(b.id,-5)}>
+                    <MinusIcon size={14}/>
+                  </button>
+                  <div className="row" style={{gap:'.2rem'}}>
+                    <input
+                      className="pct-input tabular"
+                      inputMode="numeric"
+                      aria-label={`${b.name} percentage`}
+                      value={b.pct}
+                      onChange={e=>setPctDirect(b.id, e.target.value)}
+                    />
+                    <span className="muted" style={{fontWeight:700, fontSize:'.9rem'}}>%</span>
+                  </div>
+                  <button type="button" className="stepper-btn" aria-label={`Increase ${b.name} percentage`} onClick={()=>adjustPct(b.id,5)}>
+                    <PlusIcon size={14}/>
+                  </button>
+                </div>
+                {b.custom && (
+                  <div className="row" style={{gap:'.4rem'}}>
+                    <button type="button" className="stepper-btn" aria-label={`Rename ${b.name}`} onClick={()=>openEditModal(b)}>
+                      <EditIcon size={13}/>
+                    </button>
+                    <button type="button" className="stepper-btn" aria-label="Delete bucket" title="Delete bucket" onClick={()=>removeBucket(b.id)}>
+                      <TrashIcon size={13}/>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <button type="button" className="btn-add-bucket" style={{marginTop:'.9rem'}} onClick={openModal}>
+        <PlusIcon size={15}/> Add Bucket
+      </button>
+
+      <div className="card" style={{marginTop:'1.1rem', padding:'.95rem 1.15rem'}}>
+        <div className="row between">
+          <span style={{fontWeight:800}}>Total</span>
+          <span className="tabular" style={{fontWeight:800, color:statusTone.ink}}>{totalPct}% &middot; {PESO(totalAmount)}</span>
+        </div>
+      </div>
+    </div>
+
+    {modalOpen && (
+      <div className="modal-backdrop" onClick={closeModal}>
+        <form className="modal-sheet" onClick={e=>e.stopPropagation()} onSubmit={submitAdd}>
+          <div style={{width:36, height:4, borderRadius:99, background:'var(--app-border)', margin:'0 auto 1rem'}}/>
+          <div style={{fontWeight:800, fontSize:'1.05rem', marginBottom:'1.1rem'}}>{editingId ? 'Edit Bucket' : 'Add Bucket'}</div>
+
+          <label htmlFor="bucket-name" className="eyebrow" style={{display:'block', marginBottom:'.4rem'}}>Bucket Name</label>
+          <input id="bucket-name" value={formName} onChange={e=>setFormName(e.target.value)} placeholder="e.g. Pets, Side Fund" maxLength={24}
+            style={{width:'100%', padding:'.75rem .9rem', borderRadius:'var(--r-md)', border:'1px solid var(--app-border)', background:'var(--app-surface)', fontSize:'.9rem', color:'var(--app-ink)'}}/>
+
+          {!editingId && (
+            <>
+              <label htmlFor="bucket-pct" className="eyebrow" style={{display:'block', marginTop:'1.05rem', marginBottom:'.4rem'}}>Percentage</label>
+              <div className="row" style={{gap:'.4rem'}}>
+                <input id="bucket-pct" className="pct-input" style={{width:'4.4rem'}} inputMode="numeric"
+                  value={formPct} onChange={e=>setFormPct(e.target.value.replace(/[^0-9]/g,''))}/>
+                <span className="muted" style={{fontWeight:700}}>%</span>
+              </div>
+
+              <div className="row between" style={{marginTop:'1.1rem'}}>
+                <div>
+                  <div style={{fontWeight:700, fontSize:'.88rem'}}>Protected</div>
+                  <div className="faint" style={{fontSize:'.74rem'}}>Locks this bucket, like Savings</div>
+                </div>
+                <button type="button" role="switch" aria-checked={formProtected} className="switch" onClick={()=>setFormProtected(v=>!v)}>
+                  <span className="switch-knob"/>
+                </button>
+              </div>
+            </>
+          )}
+
+          <div className="row" style={{gap:'.6rem', marginTop:'1.4rem'}}>
+            <button type="button" className="btn-ghost" style={{flex:1}} onClick={closeModal}>Cancel</button>
+            <button type="submit" className="btn-primary" style={{flex:1.5}}>{editingId ? 'Save Changes' : 'Add Bucket'}</button>
+          </div>
+        </form>
+      </div>
+    )}
+    </>
+  );
+}
+
+function AmountField({id, value, onChange}){
+  return (
+    <div className="card" style={{textAlign:'center'}}>
+      <div className="eyebrow">Amount</div>
+      <div className="row" style={{justifyContent:'center', alignItems:'baseline', gap:'.25rem', marginTop:'.3rem'}}>
+        <span style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.6rem'}}>&#8369;</span>
+        <input id={id} value={value} onChange={e=>onChange(e.target.value.replace(/[^0-9.]/g,''))}
+               inputMode="decimal" style={{
+                 border:'none', outline:'none', fontFamily:'var(--font-display)', fontWeight:800,
+                 fontSize:'2.2rem', width:'9ch', textAlign:'center', background:'transparent', color:'var(--app-ink)'
+               }}/>
+      </div>
+    </div>
+  );
+}
+
+const TRANSFER_BUCKET_IDS = ['living','bills','savings','emergency','family','wants'];
+const toNum = v => parseFloat(v) || 0;
+const fmtSigned = n => n<0 ? '-'+PESO(Math.abs(n)) : PESO(n);
+
+function TransactionsPage(){
+  const [tab, setTab] = useState('expense');
+  const [saved, setSaved] = useState(false);
+
+  const [expenseAmount, setExpenseAmount] = useState('250');
+  const [note, setNote] = useState('Lunch');
+  const [category, setCategory] = useState('living');
+  const [otherCategoryName, setOtherCategoryName] = useState('');
+  const [date, setDate] = useState(()=> new Date().toISOString().slice(0,10));
+
+  const [incomeAmount, setIncomeAmount] = useState('10500');
+  const [incomeSource, setIncomeSource] = useState('salary');
+
+  const [transferAmount, setTransferAmount] = useState('500');
+  const [fromBucket, setFromBucket] = useState('living');
+  const [toBucket, setToBucket] = useState('wants');
+
+  const categories = [
+    {id:'living', label:'Living'}, {id:'bills', label:'Bills'}, {id:'savings', label:'Savings'},
+    {id:'emergency', label:'Emergency'}, {id:'family', label:'Family'}, {id:'wants', label:'Wants'}, {id:'other', label:'Other'},
+  ];
+  const tabs = [
+    {id:'expense', label:'Expense', Icon:ArrowDownCircleIcon},
+    {id:'income', label:'Income', Icon:ArrowUpCircleIcon},
+    {id:'transfer', label:'Transfer', Icon:TransferIcon},
+  ];
+  const submitLabel = tab==='income' ? 'Add Income' : tab==='transfer' ? 'Transfer Money' : 'Save Transaction';
+  function onSave(e){
+    e.preventDefault();
+    setSaved(true);
+    setTimeout(()=>setSaved(false), 2200);
+  }
+  function selectFromBucket(id){
+    setFromBucket(id);
+    if(id===toBucket) setToBucket(TRANSFER_BUCKET_IDS.find(x=>x!==id));
+  }
+  function selectToBucket(id){
+    setToBucket(id);
+    if(id===fromBucket) setFromBucket(TRANSFER_BUCKET_IDS.find(x=>x!==id));
+  }
+
+  const selectedCat = category!=='other' ? BUCKET_LOOKUP[category] : null;
+  const expenseNum = toNum(expenseAmount);
+  const available = selectedCat ? (BUCKET_AVAILABLE[category]||0) : 0;
+  const afterExpense = available - expenseNum;
+  const shortfall = expenseNum > available ? expenseNum - available : 0;
+  const isProtectedCat = selectedCat && selectedCat.kind==='protect';
+  const hasExpenseAmount = expenseNum > 0;
+
+  const fromB = BUCKET_LOOKUP[fromBucket];
+  const toB = BUCKET_LOOKUP[toBucket];
+  const transferNum = toNum(transferAmount);
+  const fromBal = BUCKET_AVAILABLE[fromBucket]||0;
+  const toBal = BUCKET_AVAILABLE[toBucket]||0;
+  const transferShortfall = transferNum > fromBal ? transferNum - fromBal : 0;
+  const fromIsProtected = fromB.kind==='protect';
+
+  return (
+    <div className="app-scroll">
+      <TopBar/>
+      <div className="page-head">
+        <div className="page-title">Add Transaction</div>
+        <div className="page-sub">Visual only &mdash; nothing is saved yet</div>
+      </div>
+
+      <div className="row" style={{gap:'.4rem', background:'var(--app-surface-2)', padding:'.3rem', borderRadius:'var(--r-pill)'}}>
+        {tabs.map(t=>(
+          <button key={t.id} type="button" onClick={()=>setTab(t.id)} className="row" style={{
+            flex:1, justifyContent:'center', gap:'.35rem', padding:'.5rem .3rem', borderRadius:'var(--r-pill)',
+            border:'none', fontWeight:700, fontSize:'.8rem',
+            background: tab===t.id ? 'var(--app-surface)' : 'transparent',
+            color: tab===t.id ? 'var(--app-ink)' : 'var(--app-ink-faint)',
+            boxShadow: tab===t.id ? 'var(--shadow-sm)' : 'none',
+          }}>
+            <t.Icon size={16}/>{t.label}
+          </button>
+        ))}
+      </div>
+
+      <form onSubmit={onSave}>
+
+        {tab==='expense' && (
+          <>
+            <div style={{marginTop:'1.1rem'}}>
+              <AmountField id="expense-amount" value={expenseAmount} onChange={setExpenseAmount}/>
+            </div>
+
+            <label htmlFor="txn-note" className="eyebrow" style={{display:'block', marginTop:'1.1rem', marginBottom:'.4rem'}}>Note</label>
+            <input id="txn-note" value={note} onChange={e=>setNote(e.target.value)} placeholder="What was this for?" style={{
+              width:'100%', padding:'.8rem .9rem', borderRadius:'var(--r-md)', border:'1px solid var(--app-border)',
+              background:'var(--app-surface)', fontSize:'.9rem', color:'var(--app-ink)'
+            }}/>
+
+            <div className="eyebrow" style={{marginTop:'1.1rem', marginBottom:'.4rem'}}>Category</div>
+            <div className="row" style={{flexWrap:'wrap', gap:'.5rem'}}>
+              {categories.map(c=>{
+                const meta = BUCKET_LOOKUP[c.id];
+                const isProtect = meta && meta.kind==='protect';
+                return (
+                  <button type="button" key={c.id} className="chip row" style={{gap:'.32rem'}}
+                          aria-pressed={category===c.id} onClick={()=>setCategory(c.id)}>
+                    {c.label}
+                    {isProtect && <LockIcon size={11}/>}
+                  </button>
+                );
+              })}
+            </div>
+
+            {category==='other' && (
+              <div style={{marginTop:'.7rem'}}>
+                <input value={otherCategoryName} onChange={e=>setOtherCategoryName(e.target.value)} placeholder="Name this category, e.g. Medicine" style={{
+                  width:'100%', padding:'.75rem .9rem', borderRadius:'var(--r-md)', border:'1px solid var(--app-border)',
+                  background:'var(--app-surface)', fontSize:'.88rem', color:'var(--app-ink)'
+                }}/>
+              </div>
+            )}
+
+            <label htmlFor="txn-date" className="eyebrow" style={{display:'block', marginTop:'1.1rem', marginBottom:'.4rem'}}>Date</label>
+            <div className="row" style={{gap:'.6rem', border:'1px solid var(--app-border)', background:'var(--app-surface)', borderRadius:'var(--r-md)', padding:'.7rem .9rem'}}>
+              <CalendarIcon size={18} className="muted"/>
+              <input id="txn-date" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{
+                border:'none', outline:'none', background:'transparent', fontSize:'.88rem', color:'var(--app-ink)', flex:1
+              }}/>
+            </div>
+
+            {isProtectedCat && (
+              <div className="card" style={{marginTop:'1.1rem', borderLeft:'4px solid var(--status-warn-icon)'}}>
+                <div className="row" style={{gap:'.6rem'}}>
+                  <div className="icon-btn" style={{background:'var(--status-warn-bg)', color:'var(--status-warn-icon)', border:'none', width:32, height:32}}>
+                    <LockIcon size={15}/>
+                  </div>
+                  <div style={{fontWeight:800, fontSize:'.9rem', color:'var(--status-warn-text)'}}>&#128274; Protected Money</div>
+                </div>
+                <div className="muted" style={{fontSize:'.82rem', marginTop:'.5rem', lineHeight:1.4}}>
+                  You are about to spend money that you marked as protected.
+                </div>
+              </div>
+            )}
+
+            {selectedCat && (
+              <>
+                <div className="eyebrow" style={{marginTop:'1.1rem', marginBottom:'.6rem'}}>Bucket Impact</div>
+                {shortfall>0 ? (
+                  <div className="card" style={{borderLeft:'4px solid var(--status-bad-icon)'}}>
+                    <div className="row" style={{gap:'.6rem'}}>
+                      <div className="icon-btn" style={{background:'var(--status-bad-bg)', color:'var(--status-bad-icon)', border:'none', width:32, height:32}}>
+                        <AlertTriangleIcon size={16}/>
+                      </div>
+                      <div style={{fontWeight:800, fontSize:'.9rem', color:'var(--status-bad-text)'}}>&#9888; Not enough in {selectedCat.name}</div>
+                    </div>
+                    <div style={{marginTop:'.75rem', display:'grid', gap:'.35rem'}}>
+                      <div className="row between">
+                        <span className="muted" style={{fontSize:'.82rem'}}>Available</span>
+                        <span className="tabular" style={{fontWeight:700, fontSize:'.85rem'}}>{PESO(available)}</span>
+                      </div>
+                      <div className="row between">
+                        <span className="muted" style={{fontSize:'.82rem'}}>Expense</span>
+                        <span className="tabular" style={{fontWeight:700, fontSize:'.85rem'}}>&minus; {PESO(expenseNum)}</span>
+                      </div>
+                      <div className="row between">
+                        <span style={{fontWeight:700, fontSize:'.82rem', color:'var(--status-bad-text)'}}>Shortfall</span>
+                        <span className="tabular" style={{fontWeight:800, fontSize:'.85rem', color:'var(--status-bad-text)'}}>{PESO(shortfall)}</span>
+                      </div>
+                    </div>
+                    <div className="muted" style={{fontSize:'.78rem', marginTop:'.7rem', lineHeight:1.4}}>
+                      You can reallocate money from another bucket before saving.
+                    </div>
+                  </div>
+                ) : (
+                  <div className="card">
+                    <div className="row" style={{gap:'.6rem'}}>
+                      <div className="bucket-icon" style={{background:selectedCat.color, width:32, height:32}}><selectedCat.Icon size={15}/></div>
+                      <div style={{fontWeight:700, fontSize:'.92rem'}}>{selectedCat.name}</div>
+                    </div>
+                    <div className="row between" style={{marginTop:'.75rem'}}>
+                      <span className="muted" style={{fontSize:'.82rem'}}>Available</span>
+                      <span className="tabular" style={{fontWeight:700, fontSize:'.85rem'}}>{PESO(available)}</span>
+                    </div>
+                    <div className="row between" style={{marginTop:'.35rem'}}>
+                      <span className="muted" style={{fontSize:'.82rem'}}>This Expense</span>
+                      <span className="tabular" style={{fontWeight:700, fontSize:'.85rem'}}>{hasExpenseAmount ? `− ${PESO(expenseNum)}` : PESO(0)}</span>
+                    </div>
+                    <div className="row between" style={{marginTop:'.6rem', paddingTop:'.6rem', borderTop:'1px solid var(--app-border)'}}>
+                      <span style={{fontWeight:800, fontSize:'.85rem'}}>After Transaction</span>
+                      <span className="tabular" style={{fontWeight:800, fontSize:'.92rem', color: hasExpenseAmount ? 'var(--brand)' : 'var(--app-ink)'}}>
+                        {PESO(afterExpense)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
+
+        {tab==='income' && (
+          <>
+            <div style={{marginTop:'1.1rem'}}>
+              <AmountField id="income-amount" value={incomeAmount} onChange={setIncomeAmount}/>
+            </div>
+
+            <div className="eyebrow" style={{marginTop:'1.1rem', marginBottom:'.4rem'}}>Income Source</div>
+            <div className="row" style={{flexWrap:'wrap', gap:'.5rem'}}>
+              {INCOME_SOURCES.map(s=>(
+                <button type="button" key={s.id} className="chip" aria-pressed={incomeSource===s.id} onClick={()=>setIncomeSource(s.id)}>
+                  {s.label}
+                </button>
+              ))}
+            </div>
+
+            <label htmlFor="income-date" className="eyebrow" style={{display:'block', marginTop:'1.1rem', marginBottom:'.4rem'}}>Date</label>
+            <div className="row" style={{gap:'.6rem', border:'1px solid var(--app-border)', background:'var(--app-surface)', borderRadius:'var(--r-md)', padding:'.7rem .9rem'}}>
+              <CalendarIcon size={18} className="muted"/>
+              <input id="income-date" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{
+                border:'none', outline:'none', background:'transparent', fontSize:'.88rem', color:'var(--app-ink)', flex:1
+              }}/>
+            </div>
+
+            <div className="eyebrow" style={{marginTop:'1.1rem', marginBottom:'.6rem'}}>New Income</div>
+            <div className="card" style={{textAlign:'center', background:'var(--brand-tint)', border:'1px solid transparent'}}>
+              <div className="tabular" style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.9rem', color:'var(--brand-strong)'}}>
+                {PESO(toNum(incomeAmount))}
+              </div>
+              <div style={{fontSize:'.8rem', color:'var(--brand)', marginTop:'.5rem', lineHeight:1.4}}>
+                Your Money Plan will determine how this income is allocated.
+              </div>
+            </div>
+          </>
+        )}
+
+        {tab==='transfer' && (
+          <>
+            <div className="eyebrow" style={{marginTop:'1.1rem', marginBottom:'.4rem'}}>From Bucket</div>
+            <div className="row" style={{flexWrap:'wrap', gap:'.5rem'}}>
+              {TRANSFER_BUCKET_IDS.map(id=>{
+                const b = BUCKET_LOOKUP[id];
+                const disabled = id===toBucket;
+                return (
+                  <button type="button" key={id} className="chip row" style={{gap:'.32rem', opacity:disabled ? 0.4 : 1, cursor:disabled?'not-allowed':'pointer'}}
+                          disabled={disabled} aria-pressed={fromBucket===id} onClick={()=>selectFromBucket(id)}>
+                    {b.name}{b.kind==='protect' && <LockIcon size={11}/>}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="muted" style={{fontSize:'.8rem', marginTop:'.4rem'}}>Available: <span className="tabular" style={{fontWeight:700, color:'var(--app-ink)'}}>{PESO(fromBal)}</span></div>
+
+            <div className="eyebrow" style={{marginTop:'1.1rem', marginBottom:'.4rem'}}>To Bucket</div>
+            <div className="row" style={{flexWrap:'wrap', gap:'.5rem'}}>
+              {TRANSFER_BUCKET_IDS.map(id=>{
+                const b = BUCKET_LOOKUP[id];
+                const disabled = id===fromBucket;
+                return (
+                  <button type="button" key={id} className="chip row" style={{gap:'.32rem', opacity:disabled ? 0.4 : 1, cursor:disabled?'not-allowed':'pointer'}}
+                          disabled={disabled} aria-pressed={toBucket===id} onClick={()=>selectToBucket(id)}>
+                    {b.name}{b.kind==='protect' && <LockIcon size={11}/>}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="muted" style={{fontSize:'.8rem', marginTop:'.4rem'}}>Current: <span className="tabular" style={{fontWeight:700, color:'var(--app-ink)'}}>{PESO(toBal)}</span></div>
+
+            <div style={{marginTop:'1.1rem'}}>
+              <AmountField id="transfer-amount" value={transferAmount} onChange={setTransferAmount}/>
+            </div>
+
+            {fromIsProtected && (
+              <div className="card" style={{marginTop:'1.1rem', borderLeft:'4px solid var(--status-warn-icon)'}}>
+                <div className="row" style={{gap:'.6rem'}}>
+                  <div className="icon-btn" style={{background:'var(--status-warn-bg)', color:'var(--status-warn-icon)', border:'none', width:32, height:32}}>
+                    <LockIcon size={15}/>
+                  </div>
+                  <div style={{fontWeight:800, fontSize:'.9rem', color:'var(--status-warn-text)'}}>&#128274; Protected Money</div>
+                </div>
+                <div className="muted" style={{fontSize:'.82rem', marginTop:'.5rem', lineHeight:1.4}}>
+                  You are moving money out of a protected bucket.
+                </div>
+              </div>
+            )}
+
+            {transferShortfall>0 && (
+              <div className="card" style={{marginTop:'.8rem', borderLeft:'4px solid var(--status-bad-icon)'}}>
+                <div className="row" style={{gap:'.6rem'}}>
+                  <div className="icon-btn" style={{background:'var(--status-bad-bg)', color:'var(--status-bad-icon)', border:'none', width:32, height:32}}>
+                    <AlertTriangleIcon size={16}/>
+                  </div>
+                  <div style={{fontWeight:800, fontSize:'.9rem', color:'var(--status-bad-text)'}}>&#9888; Not enough in {fromB.name}</div>
+                </div>
+                <div style={{marginTop:'.75rem', display:'grid', gap:'.35rem'}}>
+                  <div className="row between">
+                    <span className="muted" style={{fontSize:'.82rem'}}>Available</span>
+                    <span className="tabular" style={{fontWeight:700, fontSize:'.85rem'}}>{PESO(fromBal)}</span>
+                  </div>
+                  <div className="row between">
+                    <span className="muted" style={{fontSize:'.82rem'}}>Shortfall</span>
+                    <span className="tabular" style={{fontWeight:800, fontSize:'.85rem', color:'var(--status-bad-text)'}}>{PESO(transferShortfall)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="eyebrow" style={{marginTop:'1.1rem', marginBottom:'.6rem'}}>Transfer Preview</div>
+            <div className="card">
+              <div className="row between">
+                <div className="row" style={{gap:'.5rem'}}>
+                  <div className="bucket-icon" style={{background:fromB.color, width:30, height:30}}><fromB.Icon size={14}/></div>
+                  <span style={{fontWeight:700, fontSize:'.88rem'}}>{fromB.name}</span>
+                </div>
+                <span className="tabular" style={{fontWeight:700, fontSize:'.85rem'}}>{PESO(fromBal)} &rarr; {fmtSigned(fromBal-transferNum)}</span>
+              </div>
+              <div className="row between" style={{marginTop:'.65rem', paddingTop:'.65rem', borderTop:'1px solid var(--app-border)'}}>
+                <div className="row" style={{gap:'.5rem'}}>
+                  <div className="bucket-icon" style={{background:toB.color, width:30, height:30}}><toB.Icon size={14}/></div>
+                  <span style={{fontWeight:700, fontSize:'.88rem'}}>{toB.name}</span>
+                </div>
+                <span className="tabular" style={{fontWeight:700, fontSize:'.85rem'}}>{PESO(toBal)} &rarr; {PESO(toBal+transferNum)}</span>
+              </div>
+            </div>
+            <div className="muted" style={{textAlign:'center', fontSize:'.8rem', marginTop:'.7rem'}}>
+              Move money between buckets without changing your total income.
+            </div>
+          </>
+        )}
+
+        {saved && (
+          <div className="badge" style={{background:'var(--status-good-bg)', color:'var(--status-good-text)', width:'100%', justifyContent:'center', marginTop:'1rem'}}>
+            <CheckCircleIcon size={14}/> Saved &mdash; demo only, not persisted
+          </div>
+        )}
+
+        <button className="btn-primary" style={{marginTop:'1rem'}} type="submit">{submitLabel}</button>
+      </form>
+    </div>
+  );
+}
+
+const GOAL_FUNDING_BUCKETS = ['savings','living','bills','family','wants'];
+
+function GoalsPage(){
+  const [goals, setGoals] = useState(()=>GOALS.map(g=>({...g})));
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [formName, setFormName] = useState('');
+  const [formTarget, setFormTarget] = useState('');
+  const [formSaved, setFormSaved] = useState('');
+  const [formDate, setFormDate] = useState('');
+  const [formPriority, setFormPriority] = useState(false);
+
+  const [detailId, setDetailId] = useState(null);
+  const [addMoneyOpen, setAddMoneyOpen] = useState(false);
+  const [addMoneyAmount, setAddMoneyAmount] = useState('500');
+  const [addMoneyBucket, setAddMoneyBucket] = useState('savings');
+  const [addMoneyConfirmed, setAddMoneyConfirmed] = useState(false);
+
+  const totalSaved = goals.reduce((s,g)=>s+g.saved,0);
+  const totalTarget = goals.reduce((s,g)=>s+g.target,0);
+  const totalRemaining = totalTarget - totalSaved;
+  const totalPct = totalTarget>0 ? Math.round((totalSaved/totalTarget)*100) : 0;
+
+  const detailGoal = goals.find(g=>g.id===detailId) || null;
+  const detailPct = detailGoal ? Math.round((detailGoal.saved/detailGoal.target)*100) : 0;
+  const detailComplete = detailPct>=100;
+  const detailRemaining = detailGoal ? Math.max(0, detailGoal.target-detailGoal.saved) : 0;
+
+  function openDetail(id){
+    setDetailId(id);
+    setAddMoneyOpen(false);
+    setAddMoneyConfirmed(false);
+    setAddMoneyAmount('500');
+  }
+  function closeDetail(){
+    setDetailId(null);
+    setAddMoneyOpen(false);
+    setAddMoneyConfirmed(false);
+  }
+  function confirmAddMoney(){
+    setAddMoneyConfirmed(true);
+    setTimeout(()=>setAddMoneyConfirmed(false), 2200);
+  }
+  function openAddGoal(){
+    setFormName(''); setFormTarget(''); setFormSaved(''); setFormDate(''); setFormPriority(false);
+    setAddOpen(true);
+  }
+  function submitAddGoal(e){
+    e.preventDefault();
+    const name = formName.trim() || 'New Goal';
+    const target = Math.max(1, parseInt(formTarget,10)||0);
+    const saved = Math.max(0, parseInt(formSaved,10)||0);
+    setGoals(gs=>[...gs, {
+      id:'goal-'+Date.now(), name, target, saved,
+      Icon:TargetIcon, color:'var(--brand)',
+      targetDate: formDate.trim() || null, priority: formPriority,
+    }]);
+    setAddOpen(false);
+  }
+
+  return (
+    <>
+    <div className="app-scroll">
+      <TopBar/>
+      <div className="page-head">
+        <div className="page-title">Goals</div>
+        <div className="page-sub">Turn your money plans into milestones.</div>
+      </div>
+
+      <div className="eyebrow" style={{marginBottom:'.6rem'}}>Goal Progress</div>
+      <div className="card" style={{marginBottom:'1.3rem'}}>
+        <div className="row between">
+          <div>
+            <div className="muted" style={{fontSize:'.76rem'}}>Total Saved</div>
+            <div className="tabular" style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.35rem', color:'var(--brand)', marginTop:'.15rem'}}>{PESO(totalSaved)}</div>
+          </div>
+          <div style={{textAlign:'right'}}>
+            <div className="muted" style={{fontSize:'.76rem'}}>Total Target</div>
+            <div className="tabular" style={{fontWeight:800, fontSize:'1.05rem', marginTop:'.15rem'}}>{PESO(totalTarget)}</div>
+          </div>
+        </div>
+        <div className="progress-track" style={{marginTop:'.9rem'}}>
+          <div className="progress-fill" style={{width:Math.min(100,totalPct)+'%', background:'var(--brand)'}}/>
+        </div>
+        <div className="row between" style={{marginTop:'.55rem'}}>
+          <span className="muted" style={{fontSize:'.78rem'}}>{totalPct}% of all goals</span>
+          <span className="tabular" style={{fontSize:'.78rem', fontWeight:700}}>{PESO(totalRemaining)} remaining</span>
+        </div>
+      </div>
+
+      <div className="row between" style={{marginBottom:'.7rem'}}>
+        <span className="section-title">Your Goals</span>
+      </div>
+
+      <div style={{display:'grid', gap:'.85rem'}}>
+        {goals.map(g=>{
+          const pct = Math.round((g.saved/g.target)*100);
+          const complete = pct>=100;
+          const remaining = Math.max(0, g.target-g.saved);
+          return (
+            <button type="button" key={g.id} className="card" onClick={()=>openDetail(g.id)}
+                    style={{textAlign:'left', width:'100%', border: complete ? '1px solid var(--status-good-icon)' : undefined}}>
+              <div className="row between" style={{alignItems:'flex-start'}}>
+                <div className="row" style={{gap:'.65rem'}}>
+                  <div className="bucket-icon" style={{background:g.color}}><g.Icon size={18}/></div>
+                  <div>
+                    <div className="row" style={{gap:'.4rem'}}>
+                      <span style={{fontWeight:700}}>{g.name}</span>
+                      {g.priority && (
+                        <span className="badge" style={{background:'var(--status-warn-bg)', color:'var(--status-warn-text)', padding:'.15rem .5rem', fontSize:'.66rem'}}>Priority</span>
+                      )}
+                    </div>
+                    <div className="muted tabular" style={{fontSize:'.8rem', marginTop:'.2rem'}}>{PESO(g.saved)} / {PESO(g.target)}</div>
+                  </div>
+                </div>
+                {complete ? (
+                  <span className="badge tabular" style={{background:'var(--status-good-bg)', color:'var(--status-good-text)', flexShrink:0}}>
+                    <CheckCircleIcon size={13}/> Goal Complete
+                  </span>
+                ) : (
+                  <span className="badge tabular" style={{background:'var(--brand-tint)', color:'var(--brand)', flexShrink:0}}>{pct}% complete</span>
+                )}
+              </div>
+              <div className="progress-track" style={{marginTop:'.8rem'}}>
+                <div className="progress-fill" style={{width:Math.min(100,pct)+'%', background: complete ? 'var(--status-good-icon)' : g.color}}/>
+              </div>
+              <div className="row between" style={{marginTop:'.6rem'}}>
+                <span className="muted tabular" style={{fontSize:'.78rem'}}>{complete ? 'Goal reached' : `${PESO(remaining)} remaining`}</span>
+                {g.targetDate && <span className="faint" style={{fontSize:'.78rem'}}>Target: {g.targetDate}</span>}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <button type="button" className="btn-add-bucket" style={{marginTop:'1rem'}} onClick={openAddGoal}>
+        <PlusIcon size={15}/> New Goal
+      </button>
+    </div>
+
+    {addOpen && (
+      <div className="modal-backdrop" onClick={()=>setAddOpen(false)}>
+        <form className="modal-sheet" onClick={e=>e.stopPropagation()} onSubmit={submitAddGoal}>
+          <div style={{width:36, height:4, borderRadius:99, background:'var(--app-border)', margin:'0 auto 1rem'}}/>
+          <div style={{fontWeight:800, fontSize:'1.05rem', marginBottom:'1.1rem'}}>New Goal</div>
+
+          <label htmlFor="goal-name" className="eyebrow" style={{display:'block', marginBottom:'.4rem'}}>Goal Name</label>
+          <input id="goal-name" value={formName} onChange={e=>setFormName(e.target.value)} placeholder="e.g. New Phone" style={{
+            width:'100%', padding:'.75rem .9rem', borderRadius:'var(--r-md)', border:'1px solid var(--app-border)',
+            background:'var(--app-surface)', fontSize:'.9rem', color:'var(--app-ink)'
+          }}/>
+
+          <label htmlFor="goal-target" className="eyebrow" style={{display:'block', marginTop:'1rem', marginBottom:'.4rem'}}>Target Amount</label>
+          <div className="row" style={{gap:'.5rem', border:'1px solid var(--app-border)', borderRadius:'var(--r-md)', padding:'.7rem .9rem', background:'var(--app-surface)'}}>
+            <span style={{fontWeight:700}}>&#8369;</span>
+            <input id="goal-target" inputMode="numeric" value={formTarget} onChange={e=>setFormTarget(e.target.value.replace(/[^0-9]/g,''))}
+                   placeholder="0" style={{flex:1, border:'none', outline:'none', background:'transparent', fontSize:'.9rem', color:'var(--app-ink)'}}/>
+          </div>
+
+          <label htmlFor="goal-saved" className="eyebrow" style={{display:'block', marginTop:'1rem', marginBottom:'.4rem'}}>Already Saved (optional)</label>
+          <div className="row" style={{gap:'.5rem', border:'1px solid var(--app-border)', borderRadius:'var(--r-md)', padding:'.7rem .9rem', background:'var(--app-surface)'}}>
+            <span style={{fontWeight:700}}>&#8369;</span>
+            <input id="goal-saved" inputMode="numeric" value={formSaved} onChange={e=>setFormSaved(e.target.value.replace(/[^0-9]/g,''))}
+                   placeholder="0" style={{flex:1, border:'none', outline:'none', background:'transparent', fontSize:'.9rem', color:'var(--app-ink)'}}/>
+          </div>
+
+          <label htmlFor="goal-date" className="eyebrow" style={{display:'block', marginTop:'1rem', marginBottom:'.4rem'}}>Target Date (optional)</label>
+          <input id="goal-date" value={formDate} onChange={e=>setFormDate(e.target.value)} placeholder="e.g. December 2026" style={{
+            width:'100%', padding:'.75rem .9rem', borderRadius:'var(--r-md)', border:'1px solid var(--app-border)',
+            background:'var(--app-surface)', fontSize:'.9rem', color:'var(--app-ink)'
+          }}/>
+
+          <div className="row between" style={{marginTop:'1.1rem'}}>
+            <div>
+              <div style={{fontWeight:700, fontSize:'.88rem'}}>Priority</div>
+              <div className="faint" style={{fontSize:'.74rem'}}>Flag this as a priority goal</div>
+            </div>
+            <button type="button" role="switch" aria-checked={formPriority} className="switch" onClick={()=>setFormPriority(v=>!v)}>
+              <span className="switch-knob"/>
+            </button>
+          </div>
+
+          <div className="row" style={{gap:'.6rem', marginTop:'1.4rem'}}>
+            <button type="button" className="btn-ghost" style={{flex:1}} onClick={()=>setAddOpen(false)}>Cancel</button>
+            <button type="submit" className="btn-primary" style={{flex:1.5}}>Create Goal</button>
+          </div>
+        </form>
+      </div>
+    )}
+
+    {detailGoal && (
+      <div className="modal-backdrop" onClick={closeDetail}>
+        <div className="modal-sheet" onClick={e=>e.stopPropagation()}>
+          <div style={{width:36, height:4, borderRadius:99, background:'var(--app-border)', margin:'0 auto 1rem'}}/>
+
+          <div className="row between" style={{alignItems:'flex-start'}}>
+            <div className="row" style={{gap:'.6rem'}}>
+              <div className="bucket-icon" style={{background:detailGoal.color}}><detailGoal.Icon size={18}/></div>
+              <div>
+                <div style={{fontWeight:800, fontSize:'1rem', textTransform:'uppercase', letterSpacing:'.02em'}}>{detailGoal.name}</div>
+                {detailGoal.priority && (
+                  <span className="badge" style={{background:'var(--status-warn-bg)', color:'var(--status-warn-text)', marginTop:'.3rem', padding:'.15rem .5rem', fontSize:'.66rem'}}>Priority</span>
+                )}
+              </div>
+            </div>
+            <button type="button" className="icon-btn" aria-label="Close" onClick={closeDetail}><XIcon size={15}/></button>
+          </div>
+
+          {detailComplete && (
+            <div className="badge" style={{background:'var(--status-good-bg)', color:'var(--status-good-text)', marginTop:'.9rem'}}>
+              <CheckCircleIcon size={14}/> Goal Complete
+            </div>
+          )}
+
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.9rem', marginTop:'1.1rem'}}>
+            <div>
+              <div className="muted" style={{fontSize:'.74rem'}}>Target</div>
+              <div className="tabular" style={{fontWeight:800, fontSize:'1.05rem', marginTop:'.15rem'}}>{PESO(detailGoal.target)}</div>
+            </div>
+            <div>
+              <div className="muted" style={{fontSize:'.74rem'}}>Saved</div>
+              <div className="tabular" style={{fontWeight:800, fontSize:'1.05rem', marginTop:'.15rem', color:'var(--brand)'}}>{PESO(detailGoal.saved)}</div>
+            </div>
+            <div>
+              <div className="muted" style={{fontSize:'.74rem'}}>Remaining</div>
+              <div className="tabular" style={{fontWeight:800, fontSize:'1.05rem', marginTop:'.15rem'}}>{PESO(detailRemaining)}</div>
+            </div>
+            <div>
+              <div className="muted" style={{fontSize:'.74rem'}}>Progress</div>
+              <div className="tabular" style={{fontWeight:800, fontSize:'1.05rem', marginTop:'.15rem'}}>{detailPct}%</div>
+            </div>
+          </div>
+
+          <div className="progress-track" style={{marginTop:'.9rem'}}>
+            <div className="progress-fill" style={{width:Math.min(100,detailPct)+'%', background: detailComplete ? 'var(--status-good-icon)' : detailGoal.color}}/>
+          </div>
+
+          {detailGoal.targetDate && (
+            <div className="muted" style={{fontSize:'.8rem', marginTop:'.7rem'}}>
+              Target Date: <span style={{fontWeight:700, color:'var(--app-ink)'}}>{detailGoal.targetDate}</span>
+            </div>
+          )}
+
+          <div className="row" style={{gap:'.6rem', marginTop:'1.2rem'}}>
+            <button type="button" className="btn-primary" style={{flex:1.4}} onClick={()=>setAddMoneyOpen(v=>!v)}>+ Add Money</button>
+            <button type="button" className="btn-soon" style={{flex:1, justifyContent:'center'}} title="Editing arrives in a later phase">Edit Goal</button>
+          </div>
+
+          {addMoneyOpen && (
+            <div className="card" style={{marginTop:'1rem'}}>
+              <label htmlFor="goal-add-amount" className="eyebrow" style={{display:'block', marginBottom:'.4rem'}}>Amount</label>
+              <div className="row" style={{gap:'.5rem', border:'1px solid var(--app-border)', borderRadius:'var(--r-md)', padding:'.65rem .8rem', background:'var(--app-surface)'}}>
+                <span style={{fontWeight:700}}>&#8369;</span>
+                <input id="goal-add-amount" inputMode="numeric" value={addMoneyAmount} onChange={e=>setAddMoneyAmount(e.target.value.replace(/[^0-9]/g,''))}
+                       style={{flex:1, border:'none', outline:'none', background:'transparent', fontSize:'.9rem', color:'var(--app-ink)'}}/>
+              </div>
+
+              <div className="eyebrow" style={{marginTop:'.9rem', marginBottom:'.4rem'}}>From Bucket</div>
+              <div className="row" style={{flexWrap:'wrap', gap:'.5rem'}}>
+                {GOAL_FUNDING_BUCKETS.map(id=>(
+                  <button type="button" key={id} className="chip" aria-pressed={addMoneyBucket===id} onClick={()=>setAddMoneyBucket(id)}>
+                    {BUCKET_LOOKUP[id].name}
+                  </button>
+                ))}
+              </div>
+
+              <div className="muted" style={{fontSize:'.78rem', marginTop:'.8rem', lineHeight:1.4}}>
+                This will eventually move money from a Fundora bucket into this goal.
+              </div>
+
+              {addMoneyConfirmed ? (
+                <div className="badge" style={{background:'var(--status-good-bg)', color:'var(--status-good-text)', width:'100%', justifyContent:'center', marginTop:'.85rem'}}>
+                  <CheckCircleIcon size={14}/> Added &mdash; demo only, not persisted
+                </div>
+              ) : (
+                <button type="button" className="btn-primary" style={{marginTop:'.85rem'}} onClick={confirmAddMoney}>Add to Goal</button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    )}
+    </>
+  );
+}
+
+const INSIGHTS_MONTHS = ['July 2026','August 2026','September 2026','October 2026','November 2026'];
+
+function InsightsPage(){
+  const [monthIndex, setMonthIndex] = useState(INSIGHTS_MONTHS.indexOf(CURRENT_MONTH));
+  const selectedMonth = INSIGHTS_MONTHS[monthIndex];
+  const isPopulated = selectedMonth === CURRENT_MONTH;
+
+  const spentPctOfIncome = Math.round((spentTotal/INCOME)*100);
+  const categoryRows = spentBuckets.map(b=>({...b, pct: Math.round((b.used/b.amount)*100)}));
+  const breakdownRows = [...spentBuckets].sort((a,b)=>b.used-a.used);
+  const maxBreakdown = Math.max(...breakdownRows.map(r=>r.used));
+  const protectedBuckets = BUCKETS.filter(b=>b.kind==='protect');
+
+  const wantsBucket = BUCKET_LOOKUP.wants;
+  const wantsPct = Math.round((wantsBucket.used/wantsBucket.amount)*100);
+  const wantsRemaining = wantsBucket.amount - wantsBucket.used;
+  const livingBucket = BUCKET_LOOKUP.living;
+  const livingPct = Math.round((livingBucket.used/livingBucket.amount)*100);
+
+  const spentSharePct = Math.round((spentTotal/INCOME)*100);
+  const protectedSharePct = Math.round((protectedTotal/INCOME)*100);
+  const availableSharePct = 100 - spentSharePct - protectedSharePct;
+
+  return (
+    <div className="app-scroll">
+      <TopBar/>
+      <div className="page-head">
+        <div className="page-title">Insights</div>
+        <div className="page-sub">Understand where your money goes.</div>
+      </div>
+
+      <div className="row between" style={{background:'var(--app-surface-2)', borderRadius:'var(--r-pill)', padding:'.4rem .5rem'}}>
+        <button type="button" className="icon-btn" style={{background:'var(--app-surface)'}} aria-label="Previous month"
+                disabled={monthIndex===0} onClick={()=>setMonthIndex(i=>Math.max(0,i-1))}>
+          <ChevronLeftIcon size={16}/>
+        </button>
+        <span style={{fontWeight:800, fontSize:'.92rem'}}>{selectedMonth}</span>
+        <button type="button" className="icon-btn" style={{background:'var(--app-surface)'}} aria-label="Next month"
+                disabled={monthIndex===INSIGHTS_MONTHS.length-1} onClick={()=>setMonthIndex(i=>Math.min(INSIGHTS_MONTHS.length-1,i+1))}>
+          <ChevronRightIcon size={16}/>
+        </button>
+      </div>
+
+      {!isPopulated ? (
+        <div className="card" style={{marginTop:'1.1rem', textAlign:'center', padding:'2rem 1.2rem'}}>
+          <div className="icon-btn brand" style={{margin:'0 auto .8rem'}}><CalendarIcon size={17}/></div>
+          <div style={{fontWeight:800, fontSize:'.95rem'}}>No data yet for {selectedMonth}</div>
+          <div className="muted" style={{fontSize:'.83rem', marginTop:'.35rem', lineHeight:1.4}}>
+            This prototype only has mock activity for {CURRENT_MONTH}.
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="eyebrow" style={{marginTop:'1.1rem', marginBottom:'.6rem'}}>Monthly Overview</div>
+          <div className="card">
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.9rem'}}>
+              <div>
+                <div className="muted" style={{fontSize:'.74rem'}}>Income</div>
+                <div className="tabular" style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.25rem', marginTop:'.15rem'}}>{PESO(INCOME)}</div>
+              </div>
+              <div>
+                <div className="muted" style={{fontSize:'.74rem'}}>Spent</div>
+                <div className="tabular" style={{fontWeight:800, fontSize:'1.1rem', marginTop:'.15rem'}}>{PESO(spentTotal)}</div>
+              </div>
+              <div>
+                <div className="muted" style={{fontSize:'.74rem'}}>Protected</div>
+                <div className="tabular" style={{fontWeight:800, fontSize:'1.1rem', marginTop:'.15rem', color:'var(--brand)'}}>{PESO(protectedTotal)}</div>
+              </div>
+              <div>
+                <div className="muted" style={{fontSize:'.74rem'}}>Available</div>
+                <div className="tabular" style={{fontWeight:800, fontSize:'1.1rem', marginTop:'.15rem', color:'var(--brand)'}}>{PESO(availableToSpend)}</div>
+              </div>
+            </div>
+
+            <div className="row between" style={{marginTop:'1.1rem', paddingTop:'.9rem', borderTop:'1px solid var(--app-border)'}}>
+              <span className="badge" style={{background:'var(--status-good-bg)', color:'var(--status-good-text)'}}>
+                <CheckCircleIcon size={13}/> Money Health: On Track
+              </span>
+              <span className="muted tabular" style={{fontSize:'.78rem'}}>{spentPctOfIncome}% of income spent</span>
+            </div>
+            <div className="progress-track" style={{marginTop:'.6rem'}}>
+              <div className="progress-fill" style={{width:spentPctOfIncome+'%', background:'var(--brand)'}}/>
+            </div>
+          </div>
+
+          <div className="row between" style={{marginTop:'1.4rem', marginBottom:'.6rem'}}>
+            <span className="section-title">Spending by Category</span>
+          </div>
+          <div className="card" style={{display:'grid', gap:'.9rem'}}>
+            {categoryRows.map(b=>(
+              <div key={b.id}>
+                <div className="row" style={{gap:'.5rem'}}>
+                  <div className="bucket-icon" style={{background:b.color, width:28, height:28}}><b.Icon size={13}/></div>
+                  <span style={{fontWeight:700, fontSize:'.88rem'}}>{b.name}</span>
+                </div>
+                <div className="row between" style={{marginTop:'.4rem'}}>
+                  <span className="muted tabular" style={{fontSize:'.8rem'}}>{PESO(b.used)} of {PESO(b.amount)}</span>
+                  <span className="tabular" style={{fontWeight:700, fontSize:'.8rem'}}>{b.pct}% used</span>
+                </div>
+                <div className="progress-track" style={{marginTop:'.4rem'}}>
+                  <div className="progress-fill" style={{width:Math.min(100,b.pct)+'%', background:b.color}}/>
+                </div>
+              </div>
+            ))}
+            <div className="row between" style={{paddingTop:'.8rem', borderTop:'1px solid var(--app-border)'}}>
+              <span style={{fontWeight:800, fontSize:'.88rem'}}>Total Spent</span>
+              <span className="tabular" style={{fontWeight:800, fontSize:'.88rem'}}>{PESO(spentTotal)}</span>
+            </div>
+          </div>
+
+          <div className="row between" style={{marginTop:'1.4rem', marginBottom:'.6rem'}}>
+            <span className="section-title">Protected Money</span>
+          </div>
+          <div className="card">
+            {protectedBuckets.map((b,i)=>(
+              <div key={b.id} className="row between" style={{padding:'.5rem 0', borderTop:i?'1px solid var(--app-border)':'none'}}>
+                <div className="row" style={{gap:'.55rem'}}>
+                  <div className="bucket-icon" style={{background:b.color, width:30, height:30}}><b.Icon size={14}/></div>
+                  <div className="row" style={{gap:'.3rem'}}>
+                    <span style={{fontWeight:700, fontSize:'.88rem'}}>{b.name}</span>
+                    <LockIcon size={11} className="faint"/>
+                  </div>
+                </div>
+                <span className="tabular" style={{fontWeight:700, fontSize:'.88rem'}}>{PESO(b.amount)}</span>
+              </div>
+            ))}
+            <div className="row between" style={{paddingTop:'.75rem', marginTop:'.2rem', borderTop:'1px solid var(--app-border)'}}>
+              <span style={{fontWeight:800, fontSize:'.88rem'}}>Total Protected</span>
+              <span className="tabular" style={{fontWeight:800, fontSize:'.88rem', color:'var(--brand)'}}>{PESO(protectedTotal)}</span>
+            </div>
+            <div className="muted" style={{fontSize:'.8rem', marginTop:'.7rem', lineHeight:1.4}}>Money you&rsquo;ve intentionally set aside.</div>
+          </div>
+
+          <div className="row between" style={{marginTop:'1.4rem', marginBottom:'.6rem'}}>
+            <span className="section-title">Things to Notice</span>
+          </div>
+          <div style={{display:'grid', gap:'.7rem'}}>
+            <div className="card" style={{borderLeft:'4px solid var(--status-warn-icon)', display:'flex', gap:'.7rem'}}>
+              <div className="icon-btn" style={{background:'var(--status-warn-bg)', color:'var(--status-warn-icon)', border:'none', width:34, height:34, flexShrink:0}}>
+                <AlertTriangleIcon size={17}/>
+              </div>
+              <div>
+                <div style={{fontWeight:800, fontSize:'.9rem'}}>Wants Alert</div>
+                <div className="muted" style={{fontSize:'.82rem', marginTop:'.15rem'}}>You&rsquo;ve used {wantsPct}% of your Wants budget.</div>
+                <div className="muted" style={{fontSize:'.82rem'}}>{PESO(wantsRemaining)} remaining.</div>
+              </div>
+            </div>
+
+            <div className="card" style={{borderLeft:'4px solid var(--status-good-icon)', display:'flex', gap:'.7rem'}}>
+              <div className="icon-btn" style={{background:'var(--status-good-bg)', color:'var(--status-good-icon)', border:'none', width:34, height:34, flexShrink:0}}>
+                <CheckCircleIcon size={17}/>
+              </div>
+              <div>
+                <div style={{fontWeight:800, fontSize:'.9rem'}}>Living is on track</div>
+                <div className="muted" style={{fontSize:'.82rem', marginTop:'.15rem'}}>You&rsquo;ve used only {livingPct}% of your Living budget.</div>
+              </div>
+            </div>
+
+            <div className="card" style={{borderLeft:'4px solid var(--brand)', display:'flex', gap:'.7rem'}}>
+              <div className="icon-btn brand" style={{width:34, height:34, flexShrink:0}}>
+                <LockIcon size={16}/>
+              </div>
+              <div>
+                <div style={{fontWeight:800, fontSize:'.9rem'}}>Protected money is intact</div>
+                <div className="muted" style={{fontSize:'.82rem', marginTop:'.15rem'}}>{PESO(protectedTotal)} remains protected in Savings and Emergency.</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="row between" style={{marginTop:'1.4rem', marginBottom:'.6rem'}}>
+            <span className="section-title">Spending Breakdown</span>
+          </div>
+          <div className="card" style={{display:'grid', gap:'.65rem'}}>
+            {breakdownRows.map(b=>(
+              <div key={b.id} className="row" style={{gap:'.6rem'}}>
+                <span className="muted" style={{fontSize:'.8rem', fontWeight:600, width:'3.6rem', flexShrink:0}}>{b.name}</span>
+                <div className="progress-track" style={{flex:1}}>
+                  <div className="progress-fill" style={{width:(b.used/maxBreakdown*100)+'%', background:b.color}}/>
+                </div>
+                <span className="tabular" style={{fontSize:'.8rem', fontWeight:700, width:'4.4rem', textAlign:'right', flexShrink:0}}>{PESO(b.used)}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="row between" style={{marginTop:'1.4rem', marginBottom:'.6rem'}}>
+            <span className="section-title">Where Your Income Stands</span>
+          </div>
+          <div className="card">
+            <div className="row" style={{height:14, borderRadius:'var(--r-pill)', overflow:'hidden', background:'var(--app-surface-2)'}}>
+              <div style={{width:spentSharePct+'%', background:'var(--app-ink-faint)', height:'100%'}}/>
+              <div style={{width:protectedSharePct+'%', background:'var(--brand)', height:'100%'}}/>
+              <div style={{width:availableSharePct+'%', background:'var(--brand-bright)', height:'100%'}}/>
+            </div>
+            <div style={{display:'grid', gap:'.55rem', marginTop:'1rem'}}>
+              <div className="row between">
+                <span className="muted" style={{fontSize:'.84rem'}}>Income</span>
+                <span className="tabular" style={{fontWeight:800, fontSize:'.88rem'}}>{PESO(INCOME)}</span>
+              </div>
+              <div className="row between">
+                <div className="row" style={{gap:'.4rem'}}>
+                  <span style={{width:9,height:9,borderRadius:99,background:'var(--app-ink-faint)',display:'inline-block'}}/>
+                  <span className="muted" style={{fontSize:'.84rem'}}>Spent</span>
+                </div>
+                <span className="tabular" style={{fontWeight:700, fontSize:'.88rem'}}>{PESO(spentTotal)}</span>
+              </div>
+              <div className="row between">
+                <div className="row" style={{gap:'.4rem'}}>
+                  <span style={{width:9,height:9,borderRadius:99,background:'var(--brand)',display:'inline-block'}}/>
+                  <span className="muted" style={{fontSize:'.84rem'}}>Protected</span>
+                </div>
+                <span className="tabular" style={{fontWeight:700, fontSize:'.88rem'}}>{PESO(protectedTotal)}</span>
+              </div>
+              <div className="row between">
+                <div className="row" style={{gap:'.4rem'}}>
+                  <span style={{width:9,height:9,borderRadius:99,background:'var(--brand-bright)',display:'inline-block'}}/>
+                  <span className="muted" style={{fontSize:'.84rem'}}>Available to Spend</span>
+                </div>
+                <span className="tabular" style={{fontWeight:700, fontSize:'.88rem'}}>{PESO(availableToSpend)}</span>
+              </div>
+            </div>
+            <div className="muted" style={{fontSize:'.78rem', marginTop:'.9rem', lineHeight:1.4, textAlign:'center'}}>
+              Income = Spent + Protected + Available
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function SettingsRow({Icon, label, value, onClick, danger}){
+  return (
+    <button type="button" className="settings-row" onClick={onClick}>
+      <div className="row" style={{gap:'.75rem'}}>
+        <div className="icon-btn" style={danger
+          ? {width:34, height:34, background:'var(--status-bad-bg)', color:'var(--status-bad-icon)', border:'none'}
+          : {width:34, height:34, background:'var(--brand-tint)', color:'var(--brand)', border:'none'}}>
+          <Icon size={16}/>
+        </div>
+        <div>
+          <div style={{fontWeight:700, fontSize:'.88rem', color: danger ? 'var(--status-bad-text)' : 'var(--app-ink)'}}>{label}</div>
+          {value && <div className="faint" style={{fontSize:'.76rem'}}>{value}</div>}
+        </div>
+      </div>
+      <ChevronRightIcon size={17} className="faint"/>
+    </button>
+  );
+}
+
+function SettingsSection({title, children}){
+  return (
+    <>
+      <div className="section-title" style={{marginTop:'1.5rem', marginBottom:'.6rem'}}>{title}</div>
+      <div className="card" style={{padding:'.2rem 1.1rem'}}>{children}</div>
+    </>
+  );
+}
+
+function SettingsPage({navigate}){
+  const [toast, setToast] = useState('');
+  function showToast(msg){
+    setToast(msg);
+    setTimeout(()=>setToast(''), 2200);
+  }
+
+  const [profile, setProfile] = useState({name:'Alex', email:'user@example.com'});
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [formName, setFormName] = useState(profile.name);
+  const [formEmail, setFormEmail] = useState(profile.email);
+  function openProfile(){ setFormName(profile.name); setFormEmail(profile.email); setProfileOpen(true); }
+  function saveProfile(e){
+    e.preventDefault();
+    setProfile({name: formName.trim() || profile.name, email: formEmail.trim() || profile.email});
+    setProfileOpen(false);
+  }
+
+  const [incomeAmount, setIncomeAmount] = useState(String(INCOME));
+  const [incomeSchedule, setIncomeSchedule] = useState('Monthly');
+  const [payday, setPayday] = useState('1st');
+  const [incomeOpen, setIncomeOpen] = useState(false);
+  const [formIncome, setFormIncome] = useState(incomeAmount);
+  const [formSchedule, setFormSchedule] = useState(incomeSchedule);
+  const [formPayday, setFormPayday] = useState(payday);
+  function openIncome(){ setFormIncome(incomeAmount); setFormSchedule(incomeSchedule); setFormPayday(payday); setIncomeOpen(true); }
+  function saveIncome(e){
+    e.preventDefault();
+    setIncomeAmount(formIncome || incomeAmount);
+    setIncomeSchedule(formSchedule);
+    setPayday(formPayday);
+    setIncomeOpen(false);
+  }
+
+  const [currency, setCurrency] = useState('PHP');
+  const [currencyOpen, setCurrencyOpen] = useState(false);
+  const [currencySearch, setCurrencySearch] = useState('');
+  const filteredCurrencies = CURRENCIES.filter(c=>{
+    const q = currencySearch.trim().toLowerCase();
+    return !q || c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q);
+  });
+  const currentCurrency = CURRENCIES.find(c=>c.code===currency);
+
+  const [budgetOpen, setBudgetOpen] = useState(false);
+  const totalPlanPct = BUCKETS.reduce((s,b)=>s+b.pct,0);
+
+  const [theme, setTheme] = useState('system');
+  useEffect(()=>{
+    if(theme==='system') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
+
+  const [notif, setNotif] = useState({budgetAlerts:true, goalReminders:true, monthlySummary:true});
+  function toggleNotif(key){ setNotif(n=>({...n, [key]:!n[key]})); }
+
+  const [biometric, setBiometric] = useState(false);
+
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteAttempted, setDeleteAttempted] = useState(false);
+  function openDelete(){ setDeleteAttempted(false); setDeleteOpen(true); }
+
+  return (
+    <>
+    <div className="app-scroll">
+      <TopBar/>
+      <div className="page-head">
+        <div className="page-title">Settings</div>
+        <div className="page-sub">Make Fundora work for you.</div>
+      </div>
+
+      {toast && (
+        <div className="badge" style={{background:'var(--status-good-bg)', color:'var(--status-good-text)', width:'100%', justifyContent:'center', marginBottom:'1rem'}}>
+          <CheckCircleIcon size={14}/> {toast}
+        </div>
+      )}
+
+      <div className="card" style={{display:'flex', alignItems:'center', gap:'.9rem'}}>
+        <div className="f-mark" style={{width:48, height:48, fontSize:'1.3rem', borderRadius:'var(--r-pill)'}}>
+          {profile.name.charAt(0).toUpperCase()}
+        </div>
+        <div style={{flex:1, minWidth:0}}>
+          <div style={{fontWeight:800, fontSize:'.98rem'}}>{profile.name}</div>
+          <div className="muted" style={{fontSize:'.8rem', marginTop:'.1rem'}}>{profile.email}</div>
+        </div>
+        <button type="button" className="btn-ghost" onClick={openProfile}>Edit Profile</button>
+      </div>
+
+      <SettingsSection title="Money Setup">
+        <SettingsRow Icon={WalletIcon} label="Monthly Income" value={PESO(toNum(incomeAmount))} onClick={openIncome}/>
+        <SettingsRow Icon={CalendarIcon} label="Income Schedule" value={incomeSchedule} onClick={openIncome}/>
+        <SettingsRow Icon={CoinsIcon} label="Currency" value={`${currentCurrency.code} — ${currentCurrency.name}`} onClick={()=>setCurrencyOpen(true)}/>
+        <SettingsRow Icon={SlidersIcon} label="Budget Method" value="Custom Percentage Plan" onClick={()=>setBudgetOpen(true)}/>
+      </SettingsSection>
+
+      <SettingsSection title="Preferences">
+        <div style={{padding:'.85rem 0'}}>
+          <div style={{fontWeight:700, fontSize:'.88rem', marginBottom:'.6rem'}}>Theme</div>
+          <div className="seg">
+            {['System','Light','Dark'].map(t=>(
+              <button type="button" key={t} className="seg-btn" aria-pressed={theme===t.toLowerCase()} onClick={()=>setTheme(t.toLowerCase())}>
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div style={{padding:'.85rem 0', borderTop:'1px solid var(--app-border)'}}>
+          <div style={{fontWeight:700, fontSize:'.88rem', marginBottom:'.7rem'}}>Notifications</div>
+          {[
+            {key:'budgetAlerts', label:'Budget Alerts'},
+            {key:'goalReminders', label:'Goal Reminders'},
+            {key:'monthlySummary', label:'Monthly Summary'},
+          ].map((n,i)=>(
+            <div key={n.key} className="row between" style={{padding: i?'.65rem 0 0':'0'}}>
+              <span className="muted" style={{fontSize:'.86rem'}}>{n.label}</span>
+              <button type="button" role="switch" aria-checked={notif[n.key]} className="switch" onClick={()=>toggleNotif(n.key)}>
+                <span className="switch-knob"/>
+              </button>
+            </div>
+          ))}
+        </div>
+      </SettingsSection>
+
+      <SettingsSection title="Security">
+        <SettingsRow Icon={LockIcon} label="Change Password" onClick={()=>showToast('Not available in this prototype')}/>
+        <div className="row between" style={{padding:'.85rem 0', borderTop:'1px solid var(--app-border)'}}>
+          <div className="row" style={{gap:'.75rem'}}>
+            <div className="icon-btn" style={{width:34, height:34, background:'var(--brand-tint)', color:'var(--brand)', border:'none'}}>
+              <ShieldCheckIcon size={16}/>
+            </div>
+            <div>
+              <div style={{fontWeight:700, fontSize:'.88rem'}}>Biometric Lock</div>
+              <div className="faint" style={{fontSize:'.76rem'}}>{biometric ? 'ON' : 'OFF'}</div>
+            </div>
+          </div>
+          <button type="button" role="switch" aria-checked={biometric} className="switch" onClick={()=>setBiometric(v=>!v)}>
+            <span className="switch-knob"/>
+          </button>
+        </div>
+        <div className="muted" style={{fontSize:'.78rem', padding:'.8rem 0', lineHeight:1.4}}>
+          Use your device&rsquo;s supported security to help protect Fundora.
+        </div>
+      </SettingsSection>
+
+      <SettingsSection title="Data & Privacy">
+        <SettingsRow Icon={ArrowDownCircleIcon} label="Export My Data" onClick={()=>showToast('Export isn’t available in this prototype yet')}/>
+        <SettingsRow Icon={TrashIcon} label="Delete My Data" onClick={openDelete} danger/>
+      </SettingsSection>
+
+      <SettingsSection title="About Fundora">
+        <div className="row between" style={{padding:'.85rem 0'}}>
+          <div className="row" style={{gap:'.75rem'}}>
+            <div className="icon-btn" style={{width:34, height:34, background:'var(--brand-tint)', color:'var(--brand)', border:'none'}}>
+              <InfoIcon size={16}/>
+            </div>
+            <div style={{fontWeight:700, fontSize:'.88rem'}}>Version</div>
+          </div>
+          <span className="muted tabular" style={{fontSize:'.82rem'}}>Prototype 0.1</span>
+        </div>
+        <SettingsRow Icon={ShieldIcon} label="Privacy Policy" onClick={()=>showToast('Not available in this prototype')}/>
+        <SettingsRow Icon={ReceiptIcon} label="Terms of Service" onClick={()=>showToast('Not available in this prototype')}/>
+        <SettingsRow Icon={HelpIcon} label="Help & Support" onClick={()=>showToast('Not available in this prototype')}/>
+      </SettingsSection>
+
+      <div className="faint" style={{fontSize:'.8rem', marginTop:'1.6rem', textAlign:'center'}}>Every peso has a purpose.</div>
+      <button type="button" className="faint" style={{display:'block', margin:'.9rem auto 0', background:'none', border:'none', fontSize:'.7rem', textDecoration:'underline'}} onClick={()=>navigate('onboarding')}>
+        Replay onboarding
+      </button>
+    </div>
+
+    {profileOpen && (
+      <div className="modal-backdrop" onClick={()=>setProfileOpen(false)}>
+        <form className="modal-sheet" onClick={e=>e.stopPropagation()} onSubmit={saveProfile}>
+          <div style={{width:36, height:4, borderRadius:99, background:'var(--app-border)', margin:'0 auto 1rem'}}/>
+          <div style={{fontWeight:800, fontSize:'1.05rem', marginBottom:'1.1rem'}}>Edit Profile</div>
+
+          <label htmlFor="profile-name" className="eyebrow" style={{display:'block', marginBottom:'.4rem'}}>Name</label>
+          <input id="profile-name" value={formName} onChange={e=>setFormName(e.target.value)} style={{
+            width:'100%', padding:'.75rem .9rem', borderRadius:'var(--r-md)', border:'1px solid var(--app-border)',
+            background:'var(--app-surface)', fontSize:'.9rem', color:'var(--app-ink)'
+          }}/>
+
+          <label htmlFor="profile-email" className="eyebrow" style={{display:'block', marginTop:'1rem', marginBottom:'.4rem'}}>Email</label>
+          <input id="profile-email" type="email" value={formEmail} onChange={e=>setFormEmail(e.target.value)} style={{
+            width:'100%', padding:'.75rem .9rem', borderRadius:'var(--r-md)', border:'1px solid var(--app-border)',
+            background:'var(--app-surface)', fontSize:'.9rem', color:'var(--app-ink)'
+          }}/>
+
+          <div className="muted" style={{fontSize:'.76rem', marginTop:'.8rem', lineHeight:1.4}}>
+            Prototype only &mdash; profile changes are not saved permanently.
+          </div>
+
+          <div className="row" style={{gap:'.6rem', marginTop:'1.3rem'}}>
+            <button type="button" className="btn-ghost" style={{flex:1}} onClick={()=>setProfileOpen(false)}>Cancel</button>
+            <button type="submit" className="btn-primary" style={{flex:1.5}}>Save Changes</button>
+          </div>
+        </form>
+      </div>
+    )}
+
+    {incomeOpen && (
+      <div className="modal-backdrop" onClick={()=>setIncomeOpen(false)}>
+        <form className="modal-sheet" onClick={e=>e.stopPropagation()} onSubmit={saveIncome}>
+          <div style={{width:36, height:4, borderRadius:99, background:'var(--app-border)', margin:'0 auto 1rem'}}/>
+          <div style={{fontWeight:800, fontSize:'1.05rem', marginBottom:'1.1rem'}}>Monthly Income</div>
+
+          <div className="row" style={{gap:'.5rem', border:'1px solid var(--app-border)', borderRadius:'var(--r-md)', padding:'.7rem .9rem', background:'var(--app-surface)'}}>
+            <span style={{fontWeight:700}}>&#8369;</span>
+            <input inputMode="numeric" value={formIncome} onChange={e=>setFormIncome(e.target.value.replace(/[^0-9]/g,''))}
+                   style={{flex:1, border:'none', outline:'none', background:'transparent', fontSize:'1rem', fontWeight:700, color:'var(--app-ink)'}}/>
+          </div>
+
+          <div className="eyebrow" style={{marginTop:'1.1rem', marginBottom:'.5rem'}}>Income Schedule</div>
+          <div className="row" style={{flexWrap:'wrap', gap:'.5rem'}}>
+            {INCOME_SCHEDULES.map(s=>(
+              <button type="button" key={s} className="chip" aria-pressed={formSchedule===s} onClick={()=>setFormSchedule(s)}>{s}</button>
+            ))}
+          </div>
+
+          <label htmlFor="payday" className="eyebrow" style={{display:'block', marginTop:'1.1rem', marginBottom:'.4rem'}}>Payday</label>
+          <input id="payday" value={formPayday} onChange={e=>setFormPayday(e.target.value)} placeholder="e.g. 1st" style={{
+            width:'100%', padding:'.75rem .9rem', borderRadius:'var(--r-md)', border:'1px solid var(--app-border)',
+            background:'var(--app-surface)', fontSize:'.9rem', color:'var(--app-ink)'
+          }}/>
+
+          <div className="muted" style={{fontSize:'.76rem', marginTop:'.9rem', lineHeight:1.4}}>
+            Prototype only &mdash; this does not change your Home or Plan totals yet.
+          </div>
+
+          <div className="row" style={{gap:'.6rem', marginTop:'1.3rem'}}>
+            <button type="button" className="btn-ghost" style={{flex:1}} onClick={()=>setIncomeOpen(false)}>Cancel</button>
+            <button type="submit" className="btn-primary" style={{flex:1.5}}>Save</button>
+          </div>
+        </form>
+      </div>
+    )}
+
+    {currencyOpen && (
+      <div className="modal-backdrop" onClick={()=>setCurrencyOpen(false)}>
+        <div className="modal-sheet" onClick={e=>e.stopPropagation()}>
+          <div style={{width:36, height:4, borderRadius:99, background:'var(--app-border)', margin:'0 auto 1rem'}}/>
+          <div className="row between">
+            <div style={{fontWeight:800, fontSize:'1.05rem'}}>Currency</div>
+            <button type="button" className="icon-btn" aria-label="Close" onClick={()=>setCurrencyOpen(false)}><XIcon size={15}/></button>
+          </div>
+
+          <input value={currencySearch} onChange={e=>setCurrencySearch(e.target.value)} placeholder="Search currency" style={{
+            width:'100%', padding:'.75rem .9rem', borderRadius:'var(--r-md)', border:'1px solid var(--app-border)',
+            background:'var(--app-surface)', fontSize:'.9rem', color:'var(--app-ink)', marginTop:'1rem'
+          }}/>
+
+          <div style={{marginTop:'.6rem', maxHeight:'46vh', overflowY:'auto'}}>
+            {filteredCurrencies.map(c=>(
+              <button type="button" key={c.code} className="settings-row" onClick={()=>{ setCurrency(c.code); setCurrencyOpen(false); }}>
+                <div>
+                  <div style={{fontWeight:700, fontSize:'.9rem'}}>{c.code} &mdash; {c.name}</div>
+                </div>
+                {currency===c.code && <CheckCircleIcon size={17} style={{color:'var(--brand)'}}/>}
+              </button>
+            ))}
+            {filteredCurrencies.length===0 && (
+              <div className="muted" style={{fontSize:'.85rem', padding:'1rem 0', textAlign:'center'}}>No currencies match &ldquo;{currencySearch}&rdquo;</div>
+            )}
+          </div>
+
+          <div className="muted" style={{fontSize:'.76rem', marginTop:'.9rem', lineHeight:1.4, borderTop:'1px solid var(--app-border)', paddingTop:'.9rem'}}>
+            Currency conversion is not included. Fundora displays your money in the currency you choose.
+          </div>
+        </div>
+      </div>
+    )}
+
+    {budgetOpen && (
+      <div className="modal-backdrop" onClick={()=>setBudgetOpen(false)}>
+        <div className="modal-sheet" onClick={e=>e.stopPropagation()}>
+          <div style={{width:36, height:4, borderRadius:99, background:'var(--app-border)', margin:'0 auto 1rem'}}/>
+          <div style={{fontWeight:800, fontSize:'1.05rem', marginBottom:'.3rem'}}>Custom Percentage Plan</div>
+          <div className="muted" style={{fontSize:'.82rem', marginBottom:'1rem'}}>Your current allocation</div>
+
+          <div style={{display:'grid', gap:'.1rem'}}>
+            {BUCKETS.map((b,i)=>(
+              <div key={b.id} className="row between" style={{padding:'.55rem 0', borderTop:i?'1px solid var(--app-border)':'none'}}>
+                <div className="row" style={{gap:'.6rem'}}>
+                  <div className="bucket-icon" style={{background:b.color, width:28, height:28}}><b.Icon size={13}/></div>
+                  <span style={{fontWeight:600, fontSize:'.88rem'}}>{b.name}</span>
+                </div>
+                <span className="tabular" style={{fontWeight:700, fontSize:'.88rem'}}>{b.pct}%</span>
+              </div>
+            ))}
+            <div className="row between" style={{paddingTop:'.75rem', marginTop:'.2rem', borderTop:'1px solid var(--app-border)'}}>
+              <span style={{fontWeight:800}}>Total</span>
+              <span className="tabular" style={{fontWeight:800}}>{totalPlanPct}%</span>
+            </div>
+          </div>
+
+          <button type="button" className="btn-primary" style={{marginTop:'1.3rem'}} onClick={()=>{ setBudgetOpen(false); navigate('plan'); }}>
+            Manage Plan
+          </button>
+        </div>
+      </div>
+    )}
+
+    {deleteOpen && (
+      <div className="modal-backdrop" onClick={()=>setDeleteOpen(false)}>
+        <div className="modal-sheet" onClick={e=>e.stopPropagation()}>
+          <div style={{width:36, height:4, borderRadius:99, background:'var(--app-border)', margin:'0 auto 1rem'}}/>
+          <div className="row" style={{gap:'.6rem'}}>
+            <div className="icon-btn" style={{background:'var(--status-bad-bg)', color:'var(--status-bad-icon)', border:'none', width:34, height:34, flexShrink:0}}>
+              <TrashIcon size={16}/>
+            </div>
+            <div style={{fontWeight:800, fontSize:'1rem'}}>Delete your Fundora data?</div>
+          </div>
+          <div className="muted" style={{fontSize:'.84rem', marginTop:'.9rem', lineHeight:1.5}}>
+            This action will permanently remove your Fundora data when this feature is connected in the full app.
+          </div>
+
+          {deleteAttempted ? (
+            <>
+              <div className="badge" style={{background:'var(--status-good-bg)', color:'var(--status-good-text)', width:'100%', justifyContent:'center', marginTop:'1.1rem'}}>
+                Nothing was deleted &mdash; this feature isn&rsquo;t connected yet.
+              </div>
+              <button type="button" className="btn-ghost" style={{marginTop:'.9rem', width:'100%', textAlign:'center', justifyContent:'center'}} onClick={()=>setDeleteOpen(false)}>Close</button>
+            </>
+          ) : (
+            <div className="row" style={{gap:'.6rem', marginTop:'1.3rem'}}>
+              <button type="button" className="btn-ghost" style={{flex:1}} onClick={()=>setDeleteOpen(false)}>Cancel</button>
+              <button type="button" className="btn-primary" style={{flex:1, background:'var(--status-bad-icon)', boxShadow:'none'}} onClick={()=>setDeleteAttempted(true)}>Delete</button>
+            </div>
+          )}
+        </div>
+      </div>
+    )}
+    </>
+  );
+}
+
+function OnboardingPage({navigate}){
+  const [step, setStep] = useState(0);
+  const last = step === 2;
+  return (
+    <div className="app-scroll" style={{display:'flex', flexDirection:'column'}}>
+      <div className="row between" style={{marginBottom:'1.2rem'}}>
+        {step>0 ? (
+          <button className="icon-btn" aria-label="Back" onClick={()=>setStep(s=>s-1)}><ChevronLeftIcon size={17}/></button>
+        ) : <span/>}
+        <button className="muted" style={{background:'none', border:'none', fontWeight:700, fontSize:'.82rem'}} onClick={()=>navigate('home')}>Skip</button>
+      </div>
+
+      <div style={{flex:1, display:'flex', flexDirection:'column', justifyContent:'center'}}>
+        {step===0 && (
+          <div style={{textAlign:'center'}}>
+            <div style={{display:'flex', justifyContent:'center', marginBottom:'1.4rem'}}>
+              <div className="f-mark" style={{width:64, height:64, fontSize:'1.9rem', borderRadius:18}}>F</div>
+            </div>
+            <h2 style={{fontSize:'1.5rem', fontWeight:800}}>Welcome to Fundora</h2>
+            <p className="muted" style={{fontSize:'.95rem', marginTop:'.6rem', lineHeight:1.5}}>
+              &ldquo;Put every part of your money in its place.&rdquo;
+            </p>
+          </div>
+        )}
+        {step===1 && (
+          <div>
+            <h2 style={{fontSize:'1.35rem', fontWeight:800, textAlign:'center'}}>Every peso has a job.</h2>
+            <p className="muted" style={{fontSize:'.88rem', marginTop:'.5rem', textAlign:'center', lineHeight:1.5}}>
+              Your income is 100%. You decide what percentage goes into each money bucket.
+            </p>
+            <div className="card" style={{marginTop:'1.3rem'}}>
+              <div style={{display:'flex', justifyContent:'center'}}>
+                <Donut size={132} thickness={16} segments={BUCKETS.map(b=>({pct:b.pct,color:b.color}))}/>
+              </div>
+              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.4rem .8rem', marginTop:'1rem'}}>
+                {BUCKETS.map(b=>(
+                  <div key={b.id} className="row" style={{gap:'.4rem', fontSize:'.78rem'}}>
+                    <span style={{width:8,height:8,borderRadius:99,background:b.color,display:'inline-block'}}/>
+                    <span style={{fontWeight:600}}>{b.name}</span>
+                    <span className="faint">{b.pct}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+        {step===2 && (
+          <div>
+            <h2 style={{fontSize:'1.35rem', fontWeight:800, textAlign:'center'}}>Your first month is ready</h2>
+            <div className="card" style={{marginTop:'1.2rem', textAlign:'center'}}>
+              <div className="eyebrow">Monthly Income &middot; demo</div>
+              <div className="tabular" style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.8rem', marginTop:'.2rem'}}>{PESO(INCOME)}</div>
+              <div className="badge" style={{background:'var(--status-good-bg)', color:'var(--status-good-text)', marginTop:'.8rem'}}>
+                <CheckCircleIcon size={13}/> 100% allocated across 6 buckets
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div className="row" style={{justifyContent:'center', gap:'.4rem', marginBottom:'1rem'}}>
+          {[0,1,2].map(i=><span key={i} className="ob-dot" aria-current={step===i}/>)}
+        </div>
+        <button className="btn-primary" onClick={()=> last ? navigate('home') : setStep(s=>s+1)}>
+          {last ? 'Enter Fundora' : 'Continue'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ============================== app shell ============================== */
+function App(){
+  const [route, navigate] = useRoute();
+  const [planBuckets, setPlanBuckets] = useState(initialPlanBuckets);
+  const pages = {
+    onboarding: <OnboardingPage navigate={navigate}/>,
+    home: <HomePage navigate={navigate}/>,
+    plan: <PlanPage buckets={planBuckets} setBuckets={setPlanBuckets}/>,
+    transactions: <TransactionsPage/>,
+    goals: <GoalsPage/>,
+    insights: <InsightsPage/>,
+    settings: <SettingsPage navigate={navigate}/>,
+  };
+  return (
+    <>
+      {pages[route]}
+      {route !== 'onboarding' && <BottomNav route={route} navigate={navigate}/>}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
