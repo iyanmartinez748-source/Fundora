@@ -276,6 +276,7 @@
     width:100%; background:var(--app-surface); border-radius:24px 24px 0 0;
     padding:1.1rem 1.25rem calc(1.3rem + env(safe-area-inset-bottom,0px));
     box-shadow:0 -14px 30px rgba(0,0,0,.25);
+    max-height:90%; overflow-y:auto; -webkit-overflow-scrolling:touch;
   }
 
   /* ---------- settings screen ---------- */
@@ -477,6 +478,125 @@ function deriveBudgetPace(amount, used, paceDays, paceStartDate, today){
   const suggestedDaily = status==='active' ? Math.floor(categoryRemaining / daysRemaining) : null;
 
   return { status, categoryRemaining, elapsedDays, daysRemaining, suggestedDaily };
+}
+
+// ---- Phase A1: local persistence (localStorage) — calculation/serialization only, no UI ----
+// Explicit allowlist of the icon components currently reachable on a persisted bucket/goal —
+// React component references can never be safely JSON.stringify/parse'd, so persisted JSON stores
+// a stable string key instead, and hydration rehydrates back to the exact live shape {..., Icon}.
+const ICON_REGISTRY = {
+  home: HomeIcon, receipt: ReceiptIcon, sprout: SproutIcon, shield: ShieldIcon,
+  users: UsersIcon, bag: BagIcon, tag: TagIcon, target: TargetIcon,
+};
+const ICON_KEY_BY_COMPONENT = new Map(Object.entries(ICON_REGISTRY).map(([key, Comp]) => [Comp, key]));
+const iconKeyFor = (Icon) => ICON_KEY_BY_COMPONENT.get(Icon) || null;
+
+const STORAGE_KEY = 'fundora_data_v1';
+const isFiniteNumber = (n) => typeof n === 'number' && Number.isFinite(n);
+const TXN_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// Lenient, per-field coercion — drops only what genuinely can't be recovered (id, financial
+// amounts), falls back on cosmetic/recoverable fields (name, color, icon) rather than rejecting
+// the whole record. paceDays/paceStartDate get only light type-sanity checks here; any further
+// malformed combination is already safely handled by deriveBudgetPace's own 'invalid' status —
+// this intentionally does not duplicate that logic.
+function hydrateBucket(raw){
+  if(!raw || typeof raw!=='object' || typeof raw.id!=='string' || raw.id==='') return null;
+  const pctNum = Number(raw.pct);
+  const pct = isFiniteNumber(pctNum) ? Math.min(100, Math.max(0, pctNum)) : 0;
+  const usedNum = Number(raw.used);
+  const used = isFiniteNumber(usedNum) ? Math.max(0, usedNum) : 0;
+  const kind = (raw.kind==='spend' || raw.kind==='protect') ? raw.kind : 'spend';
+  const name = (typeof raw.name==='string' && raw.name.trim()) ? raw.name : 'Bucket';
+  const color = (typeof raw.color==='string' && raw.color) ? raw.color : '#7c5cff';
+  const custom = !!raw.custom;
+  const Icon = ICON_REGISTRY[raw.iconKey] || TagIcon;
+  const paceDays = (raw.paceDays===null || typeof raw.paceDays==='number') ? raw.paceDays : null;
+  const paceStartDate = (raw.paceStartDate===null || typeof raw.paceStartDate==='string') ? raw.paceStartDate : null;
+  return { id:raw.id, name, pct, used, kind, color, Icon, custom, paceDays, paceStartDate };
+}
+function hydrateGoal(raw){
+  if(!raw || typeof raw!=='object' || typeof raw.id!=='string' || raw.id==='') return null;
+  const targetNum = Number(raw.target);
+  if(!(isFiniteNumber(targetNum) && targetNum>0)) return null; // no meaningful goal without a real target
+  const savedNum = Number(raw.saved);
+  const saved = isFiniteNumber(savedNum) ? Math.max(0, savedNum) : 0;
+  const name = (typeof raw.name==='string' && raw.name.trim()) ? raw.name : 'Goal';
+  const color = (typeof raw.color==='string' && raw.color) ? raw.color : 'var(--brand)';
+  const Icon = ICON_REGISTRY[raw.iconKey] || TargetIcon;
+  const targetDate = (typeof raw.targetDate==='string' && raw.targetDate) ? raw.targetDate : null;
+  const priority = !!raw.priority;
+  return { id:raw.id, name, target:targetNum, saved, Icon, color, targetDate, priority };
+}
+function hydrateTransaction(raw){
+  if(!raw || typeof raw!=='object' || typeof raw.id!=='string' || raw.id==='') return null;
+  if(raw.type!=='expense' && raw.type!=='income') return null;
+  const amountNum = Number(raw.amount);
+  if(!(isFiniteNumber(amountNum) && amountNum>0)) return null;
+  if(typeof raw.date!=='string' || !TXN_DATE_RE.test(raw.date)) return null;
+  if(raw.type==='expense'){
+    if(typeof raw.bucketId!=='string' || raw.bucketId==='') return null;
+    const note = typeof raw.note==='string' ? raw.note : '';
+    return { id:raw.id, type:'expense', amount:amountNum, bucketId:raw.bucketId, note, date:raw.date };
+  }
+  const source = typeof raw.source==='string' ? raw.source : '';
+  return { id:raw.id, type:'income', amount:amountNum, source, date:raw.date };
+}
+
+// Reads and validates the single persisted blob exactly once, synchronously — App feeds this
+// straight into its useState lazy initializers so the first render already reflects either
+// hydrated data or safe defaults (no default-then-overwrite race). Never throws: any structural
+// (Tier 1) failure — missing key aside — returns persistenceOK:false so the caller can suspend
+// further writes rather than silently clobbering corrupted or foreign data.
+function loadPersistedState(){
+  const defaults = () => ({ income:0, buckets:initialBuckets(), goals:initialGoals(), transactions:[], persistenceOK:true });
+
+  let raw;
+  try { raw = localStorage.getItem(STORAGE_KEY); } catch(e) { return defaults(); }
+  if(raw===null) return defaults();
+
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch(e) { return { ...defaults(), persistenceOK:false }; }
+
+  const structurallyValid = parsed && typeof parsed==='object' && parsed.version===1
+    && Array.isArray(parsed.buckets) && Array.isArray(parsed.goals) && Array.isArray(parsed.transactions);
+  if(!structurallyValid) return { ...defaults(), persistenceOK:false };
+
+  const incomeNum = Number(parsed.income);
+  const income = (isFiniteNumber(incomeNum) && incomeNum>=0) ? incomeNum : 0;
+  const buckets = parsed.buckets.map(hydrateBucket).filter(Boolean);
+  const goals = parsed.goals.map(hydrateGoal).filter(Boolean);
+  const transactions = parsed.transactions.map(hydrateTransaction).filter(Boolean);
+
+  return {
+    income,
+    buckets: buckets.length ? buckets : initialBuckets(),
+    goals, transactions, persistenceOK:true,
+  };
+}
+
+// Single centralized write path — the only place localStorage is ever touched. No financial
+// mutation handler anywhere writes to storage directly; App's one effect calls this whenever
+// income/buckets/goals/transactions change.
+function saveState({income, buckets, goals, transactions}){
+  try {
+    const payload = {
+      version: 1,
+      income,
+      buckets: buckets.map(b => ({
+        id:b.id, name:b.name, pct:b.pct, used:b.used, kind:b.kind, color:b.color,
+        custom:b.custom, iconKey:iconKeyFor(b.Icon), paceDays:b.paceDays, paceStartDate:b.paceStartDate,
+      })),
+      goals: goals.map(g => ({
+        id:g.id, name:g.name, target:g.target, saved:g.saved, color:g.color,
+        iconKey:iconKeyFor(g.Icon), targetDate:g.targetDate, priority:g.priority,
+      })),
+      transactions,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  } catch(e) {
+    // Quota exceeded, private-browsing restrictions, etc. — app keeps working in memory.
+  }
 }
 
 const CURRENCIES = [
@@ -2852,14 +2972,29 @@ function OnboardingPage({navigate, buckets}){
 /* ============================== app shell ============================== */
 function App(){
   const [route, navigate] = useRoute();
+  // Phase A1: read the persisted blob exactly once, synchronously, before any of the state below
+  // is created — so the very first render already reflects either hydrated data or safe defaults,
+  // never a default-then-overwrite flash. `persistenceOK` false means the stored value was
+  // malformed/unsupported; writes stay suspended for the session so it's never silently clobbered.
+  const [persisted] = useState(loadPersistedState);
+  const persistenceEnabledRef = useRef(persisted.persistenceOK);
+
   // Session-level shared financial state — the one source of truth every screen reads/writes.
-  // Resets on refresh by design (no localStorage/backend yet).
-  const [income, setIncome] = useState(0);
-  const [buckets, setBuckets] = useState(initialBuckets);
-  const [goals, setGoals] = useState(initialGoals);
-  // Session-only activity log — a record of successful Income/Expense actions, NOT a source of
-  // truth for current balances. Home/Plan/Insights continue to derive everything from income/buckets.
-  const [transactions, setTransactions] = useState([]);
+  // Now persisted to localStorage (see the write effect below); hydrated from `persisted` above.
+  const [income, setIncome] = useState(() => persisted.income);
+  const [buckets, setBuckets] = useState(() => persisted.buckets);
+  const [goals, setGoals] = useState(() => persisted.goals);
+  // Activity log — a record of successful Income/Expense actions, NOT a source of truth for
+  // current balances. Home/Plan/Insights continue to derive everything from income/buckets.
+  const [transactions, setTransactions] = useState(() => persisted.transactions);
+
+  // Single centralized persistence write path — the only place localStorage is touched from a
+  // React effect. No mutation handler anywhere (Plan, Add Transaction, Settings, etc.) contains
+  // any localStorage logic; they only ever call the setters above, exactly as before Phase A1.
+  useEffect(() => {
+    if(!persistenceEnabledRef.current) return;
+    saveState({income, buckets, goals, transactions});
+  }, [income, buckets, goals, transactions]);
 
   // Corrects an existing EXPENSE transaction: reverses the OLD bucket effect and applies the NEW
   // one in a single setBuckets pass, using the transaction's OWN stored old values (never trusting
