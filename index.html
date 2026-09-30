@@ -578,6 +578,77 @@ function dedupeById(items){
   });
 }
 
+// ---- Phase B3a1: period record hydration + the live current-period snapshot builder ----
+// Local calendar 'YYYY-MM' only — same strictness style as TXN_DATE_RE, and validates a real
+// month (01-12), not just two digits.
+const MONTH_KEY_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+// One row of a period's frozen PLAN (never spending/used, never cosmetic/UI fields — see
+// buildCurrentPeriodSnapshot). Mirrors hydrateBucket's own pct/kind semantics exactly (same
+// clamp, same 'spend' fallback for a malformed kind) rather than inventing new rules; `name`
+// is stricter than hydrateBucket's own leniency because a plan row exists ONLY to preserve
+// historical identity — a row with no usable name has nothing worth keeping, so it is dropped
+// rather than defaulted.
+function hydrateBucketPlanRow(raw){
+  if(!raw || typeof raw!=='object' || typeof raw.id!=='string' || raw.id==='') return null;
+  const name = (typeof raw.name==='string' && raw.name.trim()) ? raw.name.trim() : '';
+  if(!name) return null;
+  const pctNum = Number(raw.pct);
+  const pct = isFiniteNumber(pctNum) ? Math.min(100, Math.max(0, pctNum)) : 0;   // mirrors hydrateBucket
+  const kind = (raw.kind==='spend' || raw.kind==='protect') ? raw.kind : 'spend'; // mirrors hydrateBucket
+  return { id:raw.id, name, pct, kind };
+}
+
+// One period entry, hydrated defensively: a malformed individual period is dropped on its own
+// (never disables persistence, never discards unrelated valid periods or any other app data —
+// same two-tier philosophy already used for buckets/goals/transactions). `objectKey` is the key
+// this record is stored under in the periods container; it and the record's own monthKey must
+// agree, or the entry is rejected rather than silently reassigned to whichever key is "correct".
+function hydratePeriod(objectKey, raw){
+  if(!raw || typeof raw!=='object') return null;
+  if(typeof raw.monthKey!=='string' || !MONTH_KEY_RE.test(raw.monthKey)) return null;
+  if(raw.monthKey !== objectKey) return null;
+  const incomeNum = Number(raw.incomeSnapshot);
+  const incomeSnapshot = (isFiniteNumber(incomeNum) && incomeNum>=0) ? incomeNum : 0;
+  const bucketPlanSnapshot = Array.isArray(raw.bucketPlanSnapshot)
+    ? raw.bucketPlanSnapshot.map(hydrateBucketPlanRow).filter(Boolean)
+    : [];
+  return { monthKey: raw.monthKey, incomeSnapshot, bucketPlanSnapshot };
+}
+
+// Hydrates an entire periods container per-entry — drops only the individual malformed
+// records, keeps every valid one. Never mutates the raw persisted object.
+function hydratePeriods(rawPeriods){
+  const periods = {};
+  for(const [key, value] of Object.entries(rawPeriods)){
+    const hydrated = hydratePeriod(key, value);
+    if(hydrated) periods[key] = hydrated;
+  }
+  return periods;
+}
+
+// Pure — builds the frozen-shape plan snapshot for a period from CURRENT live state. Never
+// mutates buckets; deliberately excludes used/color/iconKey/custom/paceDays/paceStartDate —
+// only the plan identity a future historical report needs (see the B3 architecture audit).
+function buildCurrentPeriodSnapshot(monthKey, income, buckets){
+  return {
+    monthKey,
+    incomeSnapshot: income,
+    bucketPlanSnapshot: buckets.map(b => ({ id:b.id, name:b.name, pct:b.pct, kind:b.kind })),
+  };
+}
+
+// Cheap structural equality for the no-op check in App's sync effect — avoids writing/
+// re-rendering when the derived snapshot content hasn't actually changed.
+function bucketPlanSnapshotsEqual(a, b){
+  if(a.length !== b.length) return false;
+  for(let i=0;i<a.length;i++){
+    const x=a[i], y=b[i];
+    if(x.id!==y.id || x.name!==y.name || x.pct!==y.pct || x.kind!==y.kind) return false;
+  }
+  return true;
+}
+
 // Reads and validates the single persisted blob exactly once, synchronously — App feeds this
 // straight into its useState lazy initializers so the first render already reflects either
 // hydrated data or safe defaults (no default-then-overwrite race). Never throws: any structural
@@ -612,7 +683,10 @@ function loadPersistedState(){
   const buckets = dedupeById(parsed.buckets.map(hydrateBucket).filter(Boolean));
   const goals = dedupeById(parsed.goals.map(hydrateGoal).filter(Boolean));
   const transactions = dedupeById(parsed.transactions.map(hydrateTransaction).filter(Boolean));
-  const periods = isV2 ? parsed.periods : {};
+  // v1 has no periods yet — never fabricate history, start empty. A v2 blob's periods container
+  // was already confirmed to be a plain object by isV2 above; each entry is now hydrated
+  // individually so one malformed period can never take down the rest of a user's data.
+  const periods = isV2 ? hydratePeriods(parsed.periods) : {};
 
   return {
     income,
@@ -3043,11 +3117,37 @@ function App(){
   // Activity log — a record of successful Income/Expense actions, NOT a source of truth for
   // current balances. Home/Plan/Insights continue to derive everything from income/buckets.
   const [transactions, setTransactions] = useState(() => persisted.transactions);
-  // Phase B1 foundation only — an inert container for future historical monthly snapshots.
-  // Nothing in this app writes into it yet; no component receives it; no financial handler
-  // reads it. It exists purely so the persisted schema and its migration path are proven safe
-  // before any later phase starts putting real period data inside.
+  // Phase B1 foundation, now populated by Phase B3a1 — see the sync effect below. No component
+  // yet receives it and no financial handler reads it; it is still purely plan/income
+  // bookkeeping infrastructure for a future Reports phase.
   const [periods, setPeriods] = useState(() => persisted.periods);
+
+  // Phase B3a1: keeps periods[currentMonthKey] synchronized with live income/buckets — creating
+  // it on first run if absent (brand-new user, or a real calendar-month gap since the app was
+  // last open) and continuously updating it while the month stays open ("ending/current plan"
+  // semantics — see the B3 architecture audit). Depends only on [income, buckets], NEVER on
+  // `periods` itself, and always reads the latest periods via the functional setState updater —
+  // so this effect can never re-trigger itself. Returning the SAME `prev` reference when the
+  // derived snapshot is unchanged makes React bail out of the update entirely (a real no-op, not
+  // just a skipped write). `{...prev, [todayKey]: fresh}` only ever replaces the current key —
+  // every historical period is untouched, and no intermediate gap month is ever created, since
+  // todayKey is always derived directly from the real calendar date, never iterated/backfilled.
+  // This is bookkeeping only: it does not reset bucket.used, and does not touch transactions,
+  // goals, or Budget Pace — that financial rollover is Phase B3a2's job, not this one's.
+  useEffect(() => {
+    const todayKey = localMonthKey(new Date());
+    const fresh = buildCurrentPeriodSnapshot(todayKey, income, buckets);
+    setPeriods(prev => {
+      const existing = prev[todayKey];
+      if(existing
+        && existing.incomeSnapshot===fresh.incomeSnapshot
+        && bucketPlanSnapshotsEqual(existing.bucketPlanSnapshot, fresh.bucketPlanSnapshot)
+      ){
+        return prev;
+      }
+      return { ...prev, [todayKey]: fresh };
+    });
+  }, [income, buckets]);
 
   // Single centralized persistence write path — the only place localStorage is touched from a
   // React effect. No mutation handler anywhere (Plan, Add Transaction, Settings, etc.) contains
