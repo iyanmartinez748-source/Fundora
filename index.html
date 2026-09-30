@@ -351,27 +351,66 @@ const HelpIcon=p=><Icon {...p}><circle cx="12" cy="12" r="9"/><path d="M9.2 9.3a
 
 /* ============================== mock data ============================== */
 const PESO = n => '₱' + n.toLocaleString('en-PH');
-const INCOME = 21000;
 const CURRENT_MONTH = 'September 2026';
 
-const BUCKETS = [
-  {id:'living',    name:'Living',    pct:30, amount:6300, used:700,  kind:'spend',   color:'var(--cat-living)',    Icon:HomeIcon},
-  {id:'bills',     name:'Bills',     pct:20, amount:4200, used:400,  kind:'spend',   color:'var(--cat-bills)',     Icon:ReceiptIcon},
-  {id:'savings',   name:'Savings',   pct:20, amount:4200, used:4200, kind:'protect', color:'var(--cat-savings)',   Icon:SproutIcon},
-  {id:'emergency', name:'Emergency', pct:10, amount:2100, used:2100, kind:'protect', color:'var(--cat-emergency)', Icon:ShieldIcon},
-  {id:'family',    name:'Family',    pct:10, amount:2100, used:223,  kind:'spend',   color:'var(--cat-family)',    Icon:UsersIcon},
-  {id:'wants',     name:'Wants',     pct:10, amount:2100, used:1827, kind:'spend',   color:'var(--cat-wants)',     Icon:BagIcon},
+// Suggested starting allocation template — a brand-new user has no income or spending/saving
+// activity yet, so every bucket's `used` starts at 0. Bucket peso `amount` is NEVER stored as
+// state anywhere in the app: it is always derived at render time from the CURRENT shared income
+// and the bucket's own `pct` (see deriveBuckets below), so Home/Plan/Add Transaction/Insights can
+// never disagree about amounts the way an independently stored/hard-coded value could drift.
+const BUCKET_TEMPLATE = [
+  {id:'living',    name:'Living',    pct:30, used:0, kind:'spend',   color:'var(--cat-living)',    Icon:HomeIcon},
+  {id:'bills',     name:'Bills',     pct:20, used:0, kind:'spend',   color:'var(--cat-bills)',     Icon:ReceiptIcon},
+  {id:'savings',   name:'Savings',   pct:20, used:0, kind:'protect', color:'var(--cat-savings)',   Icon:SproutIcon},
+  {id:'emergency', name:'Emergency', pct:10, used:0, kind:'protect', color:'var(--cat-emergency)', Icon:ShieldIcon},
+  {id:'family',    name:'Family',    pct:10, used:0, kind:'spend',   color:'var(--cat-family)',    Icon:UsersIcon},
+  {id:'wants',     name:'Wants',     pct:10, used:0, kind:'spend',   color:'var(--cat-wants)',     Icon:BagIcon},
 ];
-const spentBuckets = BUCKETS.filter(b=>b.kind==='spend');
-const protectedTotal = BUCKETS.filter(b=>b.kind==='protect').reduce((s,b)=>s+b.amount,0);
-const spentTotal = spentBuckets.reduce((s,b)=>s+b.used,0);
-const availableToSpend = spentBuckets.reduce((s,b)=>s+(b.amount-b.used),0);
+// Seeds for App()'s session-level shared state — called once each, at App's first mount.
+const initialBuckets = () => BUCKET_TEMPLATE.map(b=>({...b, custom:false}));
+// A brand-new user has created no goals yet — the Goals screen starts empty;
+// "+ New Goal" is the primary call to action.
+const initialGoals = () => [];
 
-const GOALS = [
-  {id:'emergency-fund', name:'Emergency Fund', saved:21000, target:50000, Icon:ShieldIcon, color:'var(--brand)', targetDate:'March 2027',    priority:true},
-  {id:'laptop',          name:'New Laptop',     saved:40800, target:60000, Icon:LaptopIcon, color:'var(--brand)', targetDate:'December 2026', priority:false},
-  {id:'travel',          name:'Travel',         saved:20000, target:80000, Icon:PlaneIcon,  color:'var(--brand)', targetDate:'June 2027',     priority:false},
-];
+// ---- shared-state derivation helpers (single source of truth: session `income` + `buckets`) ----
+// A bucket's peso amount, computed fresh from the CURRENT income — never stored.
+const bucketAmountFor = (income, pct) => Math.round(income*Number(pct||0)/100);
+// One bucket, annotated with its live `amount` and `available` balance.
+// Protected buckets' available balance is the full protected amount; spend buckets' is amount-used.
+function withDerived(bucket, income){
+  const amount = bucketAmountFor(income, bucket.pct);
+  const available = bucket.kind==='protect' ? amount : amount - bucket.used;
+  return {...bucket, amount, available};
+}
+// The full shared bucket list, annotated with live amount/available — recompute wherever needed,
+// never cache/store the result, so it can never go stale relative to the live income/buckets state.
+const deriveBuckets = (buckets, income) => buckets.map(b=>withDerived(b, income));
+
+// The single shared financial-summary definitions — Home and Insights both call this instead of
+// keeping their own copies, so "Total Spent"/"Total Remaining"/"Protected"/"Available" can never
+// drift apart again. Allocation is not spending: Protected is the CURRENT remaining protected
+// balance (amount minus any actual withdrawal), not the original Savings/Emergency allocation.
+//
+// totalRemaining is RAW and can go negative — it is never clamped here. protectedRemainingTotal
+// stays PLAN-LEVEL (sum of each protect bucket's own unused allocation) and is intentionally left
+// unchanged, since it still has valid meaning per-bucket. effectiveProtectedRemaining is the
+// SUMMARY-LEVEL figure: the planned protected total capped by what actual money is left overall,
+// so Money Status can never claim more money is protected than the user actually has remaining.
+function deriveFinancialSummary(buckets, income){
+  const liveBuckets = deriveBuckets(buckets, income);
+  const allSpent = liveBuckets.reduce((s,b)=>s+b.used, 0);
+  const totalRemaining = income - allSpent;
+  const deficit = Math.max(0, -totalRemaining);
+  const protectedRemainingTotal = liveBuckets
+    .filter(b=>b.kind==='protect')
+    .reduce((s,b)=>s+Math.max(0, b.amount-b.used), 0);
+  const effectiveProtectedRemaining = Math.min(protectedRemainingTotal, Math.max(0, totalRemaining));
+  const availableToSpend = Math.max(0, totalRemaining - effectiveProtectedRemaining);
+  return {
+    liveBuckets, allSpent, totalRemaining, deficit,
+    protectedRemainingTotal, effectiveProtectedRemaining, availableToSpend,
+  };
+}
 
 const CURRENCIES = [
   {code:'PHP', name:'Philippine Peso'},
@@ -385,12 +424,6 @@ const CURRENCIES = [
 ];
 const INCOME_SCHEDULES = ['Weekly','Every 2 Weeks','Twice a Month','Monthly','Custom'];
 
-const BUCKET_LOOKUP = Object.fromEntries(BUCKETS.map(b=>[b.id,b]));
-// Available balance per bucket, derived from BUCKETS (no separate hard-coded source of truth):
-// spend buckets = allocated - used; protect buckets = the protected amount itself.
-const BUCKET_AVAILABLE = Object.fromEntries(
-  BUCKETS.map(b=>[b.id, b.kind==='protect' ? b.amount : b.amount - b.used])
-);
 const INCOME_SOURCES = [
   {id:'salary', label:'Salary'}, {id:'freelance', label:'Freelance'}, {id:'bonus', label:'Bonus'},
   {id:'side-hustle', label:'Side Hustle'}, {id:'gift', label:'Gift'}, {id:'other', label:'Other'},
@@ -462,7 +495,13 @@ function Donut({segments, size=176, thickness=20}){
 function BucketRow({bucket, showBar=true}){
   const {name, amount, used, kind, color, Icon} = bucket;
   const remaining = amount - used;
-  const ratio = Math.min(100, Math.round((used/amount)*100));
+  const remainingProtected = Math.max(0, amount - used);
+  // Uncapped — a bucket can legitimately be spent past 100% of its allocation; only the
+  // progress BAR WIDTH gets clamped below, never the displayed percentage or peso amounts.
+  const spentPct = amount>0 ? Math.round((used/amount)*100) : 0;
+  const barWidth = Math.min(100, spentPct);
+  const isOverBudget = used > amount;
+  const overBudgetAmount = used - amount;
   const isProtect = kind==='protect';
   return (
     <div className="bucket-row">
@@ -476,17 +515,22 @@ function BucketRow({bucket, showBar=true}){
             </div>
             <span className="tabular" style={{fontWeight:800, fontSize:'.9rem'}}>{PESO(amount)} allocated</span>
           </div>
-          <div className="row between" style={{marginTop:'.25rem'}}>
-            <span className="muted" style={{fontSize:'.78rem'}}>
-              {isProtect ? `${PESO(used)} protected` : `${PESO(remaining)} remaining`}
-            </span>
-            <span className="muted tabular" style={{fontSize:'.78rem', fontWeight:600}}>
-              {isProtect ? `${ratio}% funded` : `${ratio}% spent`}
-            </span>
-          </div>
+          {isProtect ? (
+            <div className="row between" style={{marginTop:'.25rem'}}>
+              <span className="muted" style={{fontSize:'.78rem'}}>{PESO(remainingProtected)} protected</span>
+              {used>0 && <span className="muted tabular" style={{fontSize:'.78rem', fontWeight:600}}>{PESO(used)} used</span>}
+            </div>
+          ) : (
+            <div className="row between" style={{marginTop:'.25rem'}}>
+              <span className="tabular" style={{fontSize:'.78rem', color: isOverBudget ? 'var(--status-bad-text)' : 'var(--app-ink-soft)'}}>
+                {isOverBudget ? `${PESO(overBudgetAmount)} over budget` : `${PESO(remaining)} remaining`}
+              </span>
+              <span className="tabular" style={{fontSize:'.78rem', fontWeight:600, color: isOverBudget ? 'var(--status-bad-text)' : 'var(--app-ink-soft)'}}>{spentPct}% spent</span>
+            </div>
+          )}
           {showBar && (
             <div className="progress-track" style={{marginTop:'.55rem'}}>
-              <div className="progress-fill" style={{width:ratio+'%', background:color}}/>
+              <div className="progress-fill" style={{width:barWidth+'%', background: isOverBudget ? 'var(--status-bad-icon)' : color}}/>
             </div>
           )}
         </div>
@@ -523,16 +567,122 @@ function BottomNav({route, navigate}){
   );
 }
 
+/* ============================== transaction history display helpers ============================== */
+// Resolve a bucket's CURRENT name live (never stored on the record) — so a rename shows up
+// retroactively in history, and a deleted bucket falls back safely instead of crashing.
+function bucketNameFor(bucketId, buckets){
+  const b = buckets.find(x=>x.id===bucketId);
+  return b ? b.name : 'Deleted bucket';
+}
+function incomeSourceLabelFor(sourceId){
+  const s = INCOME_SOURCES.find(x=>x.id===sourceId);
+  return s ? s.label : sourceId;
+}
+// Parse the stored 'YYYY-MM-DD' as LOCAL midnight (not UTC) to avoid an off-by-one display date.
+function formatTxnDate(dateStr){
+  if(!dateStr) return '';
+  return new Date(dateStr+'T00:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+}
+
 /* ============================== pages ============================== */
-function HomePage({navigate}){
-  const segments = BUCKETS.map(b=>({pct:b.pct, color:b.color}));
+function HomePage({navigate, income, buckets, transactions, editExpenseTransaction, deleteExpenseTransaction, editIncomeTransaction, deleteIncomeTransaction}){
+  const {liveBuckets, allSpent, totalRemaining, deficit, effectiveProtectedRemaining, availableToSpend} = deriveFinancialSummary(buckets, income);
+  const segments = liveBuckets.map(b=>({pct:b.pct, color:b.color}));
+  const totalPct = liveBuckets.reduce((s,b)=>s+b.pct,0);
+  const isOverspent = deficit > 0;
+  const hasIncome = income > 0;
+
+  const [editingTxn, setEditingTxn] = useState(null);
+  const [formAmount, setFormAmount] = useState('');
+  const [formCategory, setFormCategory] = useState('');
+  const [formNote, setFormNote] = useState('');
+  const [formDate, setFormDate] = useState('');
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+
+  const [editingIncomeTxn, setEditingIncomeTxn] = useState(null);
+  const [incomeFormAmount, setIncomeFormAmount] = useState('');
+  const [incomeFormSource, setIncomeFormSource] = useState('');
+  const [incomeFormDate, setIncomeFormDate] = useState('');
+  const [confirmDeleteIncomeOpen, setConfirmDeleteIncomeOpen] = useState(false);
+
+  function openEditIncome(txn){
+    setEditingIncomeTxn(txn);
+    setIncomeFormAmount(String(txn.amount));
+    setIncomeFormSource(txn.source || '');
+    setIncomeFormDate(txn.date);
+    setConfirmDeleteIncomeOpen(false);
+  }
+  function closeEditIncome(){
+    setEditingIncomeTxn(null);
+    setConfirmDeleteIncomeOpen(false);
+  }
+  const incomeFormAmountNum = toNum(incomeFormAmount);
+  const canSaveIncomeEdit = incomeFormAmountNum>0 && !!incomeFormDate;
+
+  function saveEditIncome(e){
+    e.preventDefault();
+    if(!canSaveIncomeEdit || !editingIncomeTxn) return;
+    editIncomeTransaction(editingIncomeTxn.id, {
+      amount: incomeFormAmountNum, source: incomeFormSource, date: incomeFormDate,
+    });
+    setEditingIncomeTxn(null);
+  }
+
+  // Delete-impact preview reads the SAVED transaction (editingIncomeTxn), never the unsaved
+  // incomeFormAmount/Source/Date draft state, and derives projected numbers from the current
+  // App-level income/allSpent — never from summing transaction history.
+  const savedIncomeAmount = editingIncomeTxn ? editingIncomeTxn.amount : 0;
+  const projectedIncome = Math.max(0, income - savedIncomeAmount);
+  const projectedRemaining = projectedIncome - allSpent;
+  const projectedDeficit = Math.max(0, -projectedRemaining);
+  const incomeDeleteCausesDeficit = projectedDeficit > 0;
+
+  function confirmDeleteIncome(){
+    if(!editingIncomeTxn) return;
+    deleteIncomeTransaction(editingIncomeTxn.id);
+    setConfirmDeleteIncomeOpen(false);
+    setEditingIncomeTxn(null);
+  }
+
+  function openEditExpense(txn){
+    setEditingTxn(txn);
+    setFormAmount(String(txn.amount));
+    setFormCategory(txn.bucketId);
+    setFormNote(txn.note || '');
+    setFormDate(txn.date);
+    setConfirmDeleteOpen(false);
+  }
+  function closeEditExpense(){
+    setEditingTxn(null);
+    setConfirmDeleteOpen(false);
+  }
+  const formAmountNum = toNum(formAmount);
+  const formCategoryValid = buckets.some(b=>b.id===formCategory);
+  const canSaveEdit = formAmountNum>0 && formCategoryValid && !!formDate;
+
+  function saveEditExpense(e){
+    e.preventDefault();
+    if(!canSaveEdit || !editingTxn) return;
+    editExpenseTransaction(editingTxn.id, {
+      amount: formAmountNum, bucketId: formCategory, note: formNote, date: formDate,
+    });
+    setEditingTxn(null);
+  }
+  function confirmDeleteExpense(){
+    if(!editingTxn) return;
+    deleteExpenseTransaction(editingTxn.id);
+    setConfirmDeleteOpen(false);
+    setEditingTxn(null);
+  }
+
   return (
+    <>
     <div className="app-scroll">
       <TopBar onSettings={()=>navigate('settings')}/>
 
       <div className="eyebrow">Monthly Income</div>
       <div className="tabular" style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'2.2rem', lineHeight:1.1, marginTop:'.15rem'}}>
-        {PESO(INCOME)}
+        {PESO(income)}
       </div>
       <div className="muted" style={{fontSize:'.85rem', marginTop:'.25rem', fontWeight:600}}>{CURRENT_MONTH}</div>
 
@@ -540,15 +690,24 @@ function HomePage({navigate}){
         <div style={{display:'flex', justifyContent:'center', position:'relative'}}>
           <Donut segments={segments}/>
           <div style={{position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', textAlign:'center'}}>
-            <div style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.75rem'}}>100%</div>
-            <div className="muted" style={{fontSize:'.72rem', fontWeight:700, letterSpacing:'.05em', textTransform:'uppercase', marginTop:'.1rem'}}>Allocated</div>
+            {hasIncome ? (
+              <>
+                <div style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.75rem'}}>{totalPct}%</div>
+                <div className="muted" style={{fontSize:'.72rem', fontWeight:700, letterSpacing:'.05em', textTransform:'uppercase', marginTop:'.1rem'}}>Allocated</div>
+              </>
+            ) : (
+              <>
+                <div style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.05rem', lineHeight:1.2}}>Set up</div>
+                <div className="muted" style={{fontSize:'.68rem', fontWeight:700, letterSpacing:'.04em', textTransform:'uppercase', marginTop:'.15rem'}}>your income</div>
+              </>
+            )}
           </div>
         </div>
         <div style={{textAlign:'center', fontSize:'.88rem', fontWeight:600, color:'var(--brand)', marginTop:'1rem'}}>
-          Every peso has a purpose.
+          {hasIncome ? 'Every peso has a purpose.' : 'Add your income in Plan or Settings to activate your plan.'}
         </div>
         <div className="row" style={{flexWrap:'wrap', justifyContent:'center', gap:'.55rem .95rem', marginTop:'1.1rem', paddingTop:'1.1rem', borderTop:'1px solid var(--app-border)'}}>
-          {BUCKETS.map(b=>(
+          {liveBuckets.map(b=>(
             <div key={b.id} className="row" style={{gap:'.4rem'}}>
               <span style={{width:8,height:8,borderRadius:99,background:b.color,display:'inline-block'}}/>
               <span style={{fontSize:'.78rem', fontWeight:600}}>{b.name}</span>
@@ -560,26 +719,30 @@ function HomePage({navigate}){
       <div style={{marginTop:'1.5rem'}}>
         <div className="eyebrow" style={{marginBottom:'.65rem'}}>Money Status</div>
         <div className="card" style={{
-          background:'linear-gradient(155deg, var(--brand) 0%, var(--brand-strong) 100%)',
-          border:'none', boxShadow:'0 16px 32px -16px rgba(14,79,61,.55)', padding:'1.3rem 1.25rem'
+          background: isOverspent ? 'var(--status-bad-icon)' : 'linear-gradient(155deg, var(--brand) 0%, var(--brand-strong) 100%)',
+          border:'none', boxShadow: isOverspent ? '0 16px 32px -16px rgba(220,38,38,.45)' : '0 16px 32px -16px rgba(14,79,61,.55)', padding:'1.3rem 1.25rem'
         }}>
           <div className="row between" style={{alignItems:'flex-start'}}>
             <div>
               <div style={{color:'rgba(255,255,255,.8)', fontSize:'.76rem', fontWeight:700, letterSpacing:'.05em', textTransform:'uppercase'}}>
-                Available to Spend
+                {isOverspent ? 'Overspent' : 'Total Remaining'}
               </div>
               <div className="tabular" style={{color:'#fff', fontFamily:'var(--font-display)', fontWeight:800, fontSize:'2.15rem', marginTop:'.35rem', lineHeight:1.1}}>
-                {PESO(availableToSpend)}
+                {PESO(isOverspent ? deficit : totalRemaining)}
+              </div>
+              <div style={{color:'rgba(255,255,255,.75)', fontSize:'.8rem', marginTop:'.3rem'}}>
+                of {PESO(income)} income
               </div>
             </div>
             <div className="icon-btn" style={{background:'rgba(255,255,255,.18)', color:'#fff', border:'none', width:36, height:36}}>
-              <WalletIcon size={17}/>
+              {isOverspent ? <AlertTriangleIcon size={17}/> : <WalletIcon size={17}/>}
             </div>
           </div>
         </div>
-        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.65rem', marginTop:'.65rem'}}>
-          <StatTile label="Protected" value={protectedTotal} Icon={ShieldCheckIcon} tint="var(--status-good-bg)" ink="var(--status-good-text)"/>
-          <StatTile label="Spent" value={spentTotal} Icon={ReceiptIcon} tint="var(--app-surface-2)" ink="var(--app-ink-soft)"/>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'.6rem', marginTop:'.65rem'}}>
+          <StatTile label="Available to Spend" value={availableToSpend} Icon={WalletIcon} tint="var(--brand-tint)" ink="var(--brand)"/>
+          <StatTile label="Protected" value={effectiveProtectedRemaining} Icon={ShieldCheckIcon} tint="var(--status-good-bg)" ink="var(--status-good-text)"/>
+          <StatTile label="Spent" value={allSpent} Icon={ReceiptIcon} tint="var(--app-surface-2)" ink="var(--app-ink-soft)"/>
         </div>
       </div>
 
@@ -587,9 +750,191 @@ function HomePage({navigate}){
         <span className="section-title">Your Money</span>
       </div>
       <div className="card" style={{padding:'1.2rem 1.15rem'}}>
-        {BUCKETS.map(b=><BucketRow key={b.id} bucket={b}/>)}
+        {liveBuckets.map(b=><BucketRow key={b.id} bucket={b}/>)}
+      </div>
+
+      <div className="row between" style={{marginTop:'1.6rem', marginBottom:'.7rem'}}>
+        <span className="section-title">Recent Transactions</span>
+      </div>
+      <div className="card" style={{padding:'1.2rem 1.15rem'}}>
+        {transactions.length===0 ? (
+          <div className="muted" style={{textAlign:'center', fontSize:'.85rem'}}>No transactions yet.</div>
+        ) : (
+          transactions.slice(0,5).map((t,i)=>{
+            const isExpense = t.type==='expense';
+            const title = isExpense ? (t.note || bucketNameFor(t.bucketId, buckets)) : incomeSourceLabelFor(t.source);
+            const subtitle = isExpense
+              ? `${bucketNameFor(t.bucketId, buckets)} · ${formatTxnDate(t.date)}`
+              : `Income · ${formatTxnDate(t.date)}`;
+            return (
+              <button key={t.id} type="button" onClick={()=> isExpense ? openEditExpense(t) : openEditIncome(t)}
+                className="row between" style={{
+                  alignItems:'flex-start', marginTop: i?'.75rem':'0', paddingTop: i?'.75rem':'0',
+                  borderTop: i?'1px solid var(--app-border)':'none',
+                  width:'100%', background:'none', border:'none', textAlign:'left', font:'inherit', color:'inherit',
+                  cursor:'pointer',
+                }}>
+                <div className="row" style={{gap:'.65rem'}}>
+                  <div className="icon-btn" style={{
+                    width:36, height:36, border:'none',
+                    background: isExpense ? 'var(--app-surface-2)' : 'var(--status-good-bg)',
+                    color: isExpense ? 'var(--app-ink-soft)' : 'var(--status-good-icon)',
+                  }}>
+                    {isExpense ? <ArrowDownCircleIcon size={17}/> : <ArrowUpCircleIcon size={17}/>}
+                  </div>
+                  <div>
+                    <div style={{fontWeight:700, fontSize:'.9rem'}}>{title}</div>
+                    <div className="muted" style={{fontSize:'.78rem', marginTop:'.1rem'}}>{subtitle}</div>
+                  </div>
+                </div>
+                <span className="tabular" style={{fontWeight:800, fontSize:'.9rem', flexShrink:0, color: isExpense ? 'var(--app-ink)' : 'var(--status-good-text)'}}>
+                  {isExpense ? '−' : '+'}{PESO(t.amount)}
+                </span>
+              </button>
+            );
+          })
+        )}
       </div>
     </div>
+
+    {editingTxn && (
+      <div className="modal-backdrop" onClick={closeEditExpense}>
+        {confirmDeleteOpen ? (
+          <div className="modal-sheet" onClick={e=>e.stopPropagation()}>
+            <div style={{width:36, height:4, borderRadius:99, background:'var(--app-border)', margin:'0 auto 1rem'}}/>
+            <div className="row" style={{gap:'.6rem'}}>
+              <div className="icon-btn" style={{background:'var(--status-bad-bg)', color:'var(--status-bad-icon)', border:'none', width:34, height:34, flexShrink:0}}>
+                <TrashIcon size={16}/>
+              </div>
+              <div style={{fontWeight:800, fontSize:'1rem'}}>Delete this expense?</div>
+            </div>
+            <div className="muted" style={{fontSize:'.84rem', marginTop:'.9rem', lineHeight:1.5}}>
+              This will remove the transaction and reverse its effect on your budget.
+            </div>
+            <div className="row" style={{gap:'.6rem', marginTop:'1.3rem'}}>
+              <button type="button" className="btn-ghost" style={{flex:1}} onClick={()=>setConfirmDeleteOpen(false)}>Keep Transaction</button>
+              <button type="button" className="btn-primary" style={{flex:1, background:'var(--status-bad-icon)', boxShadow:'none'}} onClick={confirmDeleteExpense}>Delete Expense</button>
+            </div>
+          </div>
+        ) : (
+          <form className="modal-sheet" onClick={e=>e.stopPropagation()} onSubmit={saveEditExpense}>
+            <div style={{width:36, height:4, borderRadius:99, background:'var(--app-border)', margin:'0 auto 1rem'}}/>
+            <div style={{fontWeight:800, fontSize:'1.05rem', marginBottom:'1.1rem'}}>Edit Expense</div>
+
+            <AmountField id="edit-expense-amount" value={formAmount} onChange={setFormAmount}/>
+
+            <div className="eyebrow" style={{marginTop:'1.1rem', marginBottom:'.4rem'}}>Category</div>
+            <div className="row" style={{flexWrap:'wrap', gap:'.5rem'}}>
+              {buckets.map(b=>(
+                <button type="button" key={b.id} className="chip row" style={{gap:'.32rem'}}
+                        aria-pressed={formCategory===b.id} onClick={()=>setFormCategory(b.id)}>
+                  {b.name}
+                  {b.kind==='protect' && <LockIcon size={11}/>}
+                </button>
+              ))}
+            </div>
+            {!formCategoryValid && (
+              <div className="muted" style={{fontSize:'.78rem', marginTop:'.6rem', color:'var(--status-warn-text)', lineHeight:1.4}}>
+                This transaction&rsquo;s original category no longer exists. Choose a current category before saving.
+              </div>
+            )}
+
+            <label htmlFor="edit-expense-note" className="eyebrow" style={{display:'block', marginTop:'1.1rem', marginBottom:'.4rem'}}>Note</label>
+            <input id="edit-expense-note" value={formNote} onChange={e=>setFormNote(e.target.value)} placeholder="What was this for?" style={{
+              width:'100%', padding:'.8rem .9rem', borderRadius:'var(--r-md)', border:'1px solid var(--app-border)',
+              background:'var(--app-surface)', fontSize:'.9rem', color:'var(--app-ink)'
+            }}/>
+
+            <label htmlFor="edit-expense-date" className="eyebrow" style={{display:'block', marginTop:'1.1rem', marginBottom:'.4rem'}}>Date</label>
+            <div className="row" style={{gap:'.6rem', border:'1px solid var(--app-border)', background:'var(--app-surface)', borderRadius:'var(--r-md)', padding:'.7rem .9rem'}}>
+              <CalendarIcon size={18} className="muted"/>
+              <input id="edit-expense-date" type="date" value={formDate} onChange={e=>setFormDate(e.target.value)} style={{
+                border:'none', outline:'none', background:'transparent', fontSize:'.88rem', color:'var(--app-ink)', flex:1
+              }}/>
+            </div>
+
+            <button type="button" onClick={()=>setConfirmDeleteOpen(true)} style={{
+              display:'block', width:'100%', textAlign:'center', background:'none', border:'none',
+              color:'var(--status-bad-text)', fontWeight:700, fontSize:'.85rem', marginTop:'1.2rem', padding:'.3rem'
+            }}>
+              Delete Transaction
+            </button>
+
+            <div className="row" style={{gap:'.6rem', marginTop:'.9rem'}}>
+              <button type="button" className="btn-ghost" style={{flex:1}} onClick={closeEditExpense}>Cancel</button>
+              <button type="submit" className="btn-primary" style={{flex:1.5, opacity: canSaveEdit ? 1 : .5}} disabled={!canSaveEdit}>Save Changes</button>
+            </div>
+          </form>
+        )}
+      </div>
+    )}
+
+    {editingIncomeTxn && (
+      <div className="modal-backdrop" onClick={closeEditIncome}>
+        {confirmDeleteIncomeOpen ? (
+          <div className="modal-sheet" onClick={e=>e.stopPropagation()}>
+            <div style={{width:36, height:4, borderRadius:99, background:'var(--app-border)', margin:'0 auto 1rem'}}/>
+            <div className="row" style={{gap:'.6rem'}}>
+              <div className="icon-btn" style={{background:'var(--status-bad-bg)', color:'var(--status-bad-icon)', border:'none', width:34, height:34, flexShrink:0}}>
+                <TrashIcon size={16}/>
+              </div>
+              <div style={{fontWeight:800, fontSize:'1rem'}}>Delete this income?</div>
+            </div>
+            {incomeDeleteCausesDeficit ? (
+              <div className="muted" style={{fontSize:'.84rem', marginTop:'.9rem', lineHeight:1.5}}>
+                Deleting this {PESO(savedIncomeAmount)} income will leave your budget {PESO(projectedDeficit)} overspent.
+                Your existing expenses will not be changed.
+              </div>
+            ) : (
+              <div className="muted" style={{fontSize:'.84rem', marginTop:'.9rem', lineHeight:1.5}}>
+                This will remove the transaction and subtract {PESO(savedIncomeAmount)} from your total income.
+              </div>
+            )}
+            <div className="row" style={{gap:'.6rem', marginTop:'1.3rem'}}>
+              <button type="button" className="btn-ghost" style={{flex:1}} onClick={()=>setConfirmDeleteIncomeOpen(false)}>Keep Transaction</button>
+              <button type="button" className="btn-primary" style={{flex:1, background:'var(--status-bad-icon)', boxShadow:'none'}} onClick={confirmDeleteIncome}>Delete Income</button>
+            </div>
+          </div>
+        ) : (
+        <form className="modal-sheet" onClick={e=>e.stopPropagation()} onSubmit={saveEditIncome}>
+          <div style={{width:36, height:4, borderRadius:99, background:'var(--app-border)', margin:'0 auto 1rem'}}/>
+          <div style={{fontWeight:800, fontSize:'1.05rem', marginBottom:'1.1rem'}}>Edit Income</div>
+
+          <AmountField id="edit-income-amount" value={incomeFormAmount} onChange={setIncomeFormAmount}/>
+
+          <div className="eyebrow" style={{marginTop:'1.1rem', marginBottom:'.4rem'}}>Income Source</div>
+          <div className="row" style={{flexWrap:'wrap', gap:'.5rem'}}>
+            {INCOME_SOURCES.map(s=>(
+              <button type="button" key={s.id} className="chip" aria-pressed={incomeFormSource===s.id} onClick={()=>setIncomeFormSource(s.id)}>
+                {s.label}
+              </button>
+            ))}
+          </div>
+
+          <label htmlFor="edit-income-date" className="eyebrow" style={{display:'block', marginTop:'1.1rem', marginBottom:'.4rem'}}>Date</label>
+          <div className="row" style={{gap:'.6rem', border:'1px solid var(--app-border)', background:'var(--app-surface)', borderRadius:'var(--r-md)', padding:'.7rem .9rem'}}>
+            <CalendarIcon size={18} className="muted"/>
+            <input id="edit-income-date" type="date" value={incomeFormDate} onChange={e=>setIncomeFormDate(e.target.value)} style={{
+              border:'none', outline:'none', background:'transparent', fontSize:'.88rem', color:'var(--app-ink)', flex:1
+            }}/>
+          </div>
+
+          <button type="button" onClick={()=>setConfirmDeleteIncomeOpen(true)} style={{
+            display:'block', width:'100%', textAlign:'center', background:'none', border:'none',
+            color:'var(--status-bad-text)', fontWeight:700, fontSize:'.85rem', marginTop:'1.2rem', padding:'.3rem'
+          }}>
+            Delete Transaction
+          </button>
+
+          <div className="row" style={{gap:'.6rem', marginTop:'.9rem'}}>
+            <button type="button" className="btn-ghost" style={{flex:1}} onClick={closeEditIncome}>Cancel</button>
+            <button type="submit" className="btn-primary" style={{flex:1.5, opacity: canSaveIncomeEdit ? 1 : .5}} disabled={!canSaveIncomeEdit}>Save Changes</button>
+          </div>
+        </form>
+        )}
+      </div>
+    )}
+    </>
   );
 }
 
@@ -607,9 +952,8 @@ function StatTile({label, value, Icon, tint, ink}){
 
 const PLAN_CUSTOM_PALETTE = ['#7c5cff','#0891b2','#d6455d','#7a8f2c','#b8560f'];
 const clampPct = n => Math.min(100, Math.max(0, n));
-const initialPlanBuckets = () => BUCKETS.map(b=>({id:b.id, name:b.name, pct:b.pct, kind:b.kind, color:b.color, Icon:b.Icon, custom:false}));
 
-function PlanPage({buckets, setBuckets}){
+function PlanPage({buckets, setBuckets, income}){
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [formName, setFormName] = useState('');
@@ -617,9 +961,9 @@ function PlanPage({buckets, setBuckets}){
   const [formProtected, setFormProtected] = useState(false);
 
   const totalPct = buckets.reduce((s,b)=>s+Number(b.pct||0),0);
-  const totalAmount = buckets.reduce((s,b)=>s+Math.round(INCOME*Number(b.pct||0)/100),0);
+  const totalAmount = buckets.reduce((s,b)=>s+bucketAmountFor(income,b.pct),0);
   const diff = totalPct - 100;
-  const diffAmount = Math.round(INCOME*Math.abs(diff)/100);
+  const diffAmount = bucketAmountFor(income, Math.abs(diff));
   const status = diff===0 ? 'ok' : diff<0 ? 'under' : 'over';
   const statusTone = {
     ok:   {ink:'var(--status-good-text)', icon:'var(--status-good-icon)', bg:'var(--status-good-bg)', Icon:CheckCircleIcon},
@@ -662,7 +1006,7 @@ function PlanPage({buckets, setBuckets}){
     const pct = clampPct(parseInt(formPct,10) || 0);
     const color = PLAN_CUSTOM_PALETTE[buckets.filter(b=>b.custom).length % PLAN_CUSTOM_PALETTE.length];
     setBuckets(bs=>[...bs, {
-      id:'custom-'+Date.now(), name, pct, kind: formProtected ? 'protect' : 'spend',
+      id:'custom-'+Date.now(), name, pct, used:0, kind: formProtected ? 'protect' : 'spend',
       color, Icon:TagIcon, custom:true,
     }]);
     closeModal();
@@ -681,7 +1025,7 @@ function PlanPage({buckets, setBuckets}){
         <div className="eyebrow" style={{letterSpacing:'.08em'}}>Your Money Plan</div>
         <div className="row" style={{justifyContent:'center', gap:'2rem', marginTop:'1rem'}}>
           <div>
-            <div className="tabular" style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.6rem'}}>{PESO(INCOME)}</div>
+            <div className="tabular" style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.6rem'}}>{PESO(income)}</div>
             <div className="muted" style={{fontSize:'.72rem', marginTop:'.15rem'}}>Monthly Income</div>
           </div>
           <div style={{width:1, background:'var(--app-border)'}}/>
@@ -726,7 +1070,7 @@ function PlanPage({buckets, setBuckets}){
 
       <div>
         {buckets.map(b=>{
-          const amount = Math.round(INCOME*Number(b.pct||0)/100);
+          const amount = bucketAmountFor(income, b.pct);
           return (
             <div key={b.id} className="plan-row">
               <div className="row between" style={{alignItems:'flex-start'}}>
@@ -854,66 +1198,83 @@ function AmountField({id, value, onChange}){
   );
 }
 
-const TRANSFER_BUCKET_IDS = ['living','bills','savings','emergency','family','wants'];
 const toNum = v => parseFloat(v) || 0;
 const fmtSigned = n => n<0 ? '-'+PESO(Math.abs(n)) : PESO(n);
 
-function TransactionsPage(){
+function TransactionsPage({income, setIncome, buckets, setBuckets, transactions, setTransactions}){
   const [tab, setTab] = useState('expense');
   const [saved, setSaved] = useState(false);
 
-  const [expenseAmount, setExpenseAmount] = useState('250');
-  const [note, setNote] = useState('Lunch');
+  const [expenseAmount, setExpenseAmount] = useState('');
+  const [note, setNote] = useState('');
   const [category, setCategory] = useState('living');
-  const [otherCategoryName, setOtherCategoryName] = useState('');
   const [date, setDate] = useState(()=> new Date().toISOString().slice(0,10));
 
-  const [incomeAmount, setIncomeAmount] = useState('10500');
+  const [incomeAmount, setIncomeAmount] = useState('');
   const [incomeSource, setIncomeSource] = useState('salary');
 
-  const [transferAmount, setTransferAmount] = useState('500');
+  const [transferAmount, setTransferAmount] = useState('');
   const [fromBucket, setFromBucket] = useState('living');
   const [toBucket, setToBucket] = useState('wants');
 
-  const categories = [
-    {id:'living', label:'Living'}, {id:'bills', label:'Bills'}, {id:'savings', label:'Savings'},
-    {id:'emergency', label:'Emergency'}, {id:'family', label:'Family'}, {id:'wants', label:'Wants'}, {id:'other', label:'Other'},
-  ];
+  const liveBuckets = deriveBuckets(buckets, income);
+  const lookup = Object.fromEntries(liveBuckets.map(b=>[b.id,b]));
+
   const tabs = [
     {id:'expense', label:'Expense', Icon:ArrowDownCircleIcon},
     {id:'income', label:'Income', Icon:ArrowUpCircleIcon},
     {id:'transfer', label:'Transfer', Icon:TransferIcon},
   ];
   const submitLabel = tab==='income' ? 'Add Income' : tab==='transfer' ? 'Transfer Money' : 'Save Transaction';
-  function onSave(e){
-    e.preventDefault();
-    setSaved(true);
-    setTimeout(()=>setSaved(false), 2200);
-  }
-  function selectFromBucket(id){
-    setFromBucket(id);
-    if(id===toBucket) setToBucket(TRANSFER_BUCKET_IDS.find(x=>x!==id));
-  }
-  function selectToBucket(id){
-    setToBucket(id);
-    if(id===fromBucket) setFromBucket(TRANSFER_BUCKET_IDS.find(x=>x!==id));
-  }
 
-  const selectedCat = category!=='other' ? BUCKET_LOOKUP[category] : null;
+  const selectedCat = lookup[category] || null;
   const expenseNum = toNum(expenseAmount);
-  const available = selectedCat ? (BUCKET_AVAILABLE[category]||0) : 0;
+  const available = selectedCat ? selectedCat.available : 0;
   const afterExpense = available - expenseNum;
   const shortfall = expenseNum > available ? expenseNum - available : 0;
   const isProtectedCat = selectedCat && selectedCat.kind==='protect';
   const hasExpenseAmount = expenseNum > 0;
 
-  const fromB = BUCKET_LOOKUP[fromBucket];
-  const toB = BUCKET_LOOKUP[toBucket];
+  const incomeNum = toNum(incomeAmount);
+
+  const fromB = lookup[fromBucket];
+  const toB = lookup[toBucket];
   const transferNum = toNum(transferAmount);
-  const fromBal = BUCKET_AVAILABLE[fromBucket]||0;
-  const toBal = BUCKET_AVAILABLE[toBucket]||0;
+  const fromBal = fromB ? fromB.available : 0;
+  const toBal = toB ? toB.available : 0;
   const transferShortfall = transferNum > fromBal ? transferNum - fromBal : 0;
-  const fromIsProtected = fromB.kind==='protect';
+  const fromIsProtected = fromB && fromB.kind==='protect';
+
+  function onSave(e){
+    e.preventDefault();
+    if(tab==='expense'){
+      if(!selectedCat || expenseNum<=0) return; // reject zero/invalid amounts, or no selected bucket
+      setBuckets(bs=>bs.map(b=> b.id===category ? {...b, used: b.used + expenseNum} : b));
+      setTransactions(prev=>[{
+        id:'txn-'+Date.now(), type:'expense', amount:expenseNum, bucketId:category, note:note.trim(), date,
+      }, ...prev]);
+      setExpenseAmount('');
+      setNote('');
+    } else if(tab==='income'){
+      if(incomeNum<=0) return; // reject zero/invalid amounts
+      setIncome(prev=>prev + incomeNum);
+      setTransactions(prev=>[{
+        id:'txn-'+Date.now(), type:'income', amount:incomeNum, source:incomeSource, date,
+      }, ...prev]);
+      setIncomeAmount('');
+    }
+    // Transfer intentionally does not mutate shared state yet — preview/demo only (see below).
+    setSaved(true);
+    setTimeout(()=>setSaved(false), 2200);
+  }
+  function selectFromBucket(id){
+    setFromBucket(id);
+    if(id===toBucket){ const alt = buckets.find(b=>b.id!==id); if(alt) setToBucket(alt.id); }
+  }
+  function selectToBucket(id){
+    setToBucket(id);
+    if(id===fromBucket){ const alt = buckets.find(b=>b.id!==id); if(alt) setFromBucket(alt.id); }
+  }
 
   return (
     <div className="app-scroll">
@@ -953,27 +1314,14 @@ function TransactionsPage(){
 
             <div className="eyebrow" style={{marginTop:'1.1rem', marginBottom:'.4rem'}}>Category</div>
             <div className="row" style={{flexWrap:'wrap', gap:'.5rem'}}>
-              {categories.map(c=>{
-                const meta = BUCKET_LOOKUP[c.id];
-                const isProtect = meta && meta.kind==='protect';
-                return (
-                  <button type="button" key={c.id} className="chip row" style={{gap:'.32rem'}}
-                          aria-pressed={category===c.id} onClick={()=>setCategory(c.id)}>
-                    {c.label}
-                    {isProtect && <LockIcon size={11}/>}
-                  </button>
-                );
-              })}
+              {liveBuckets.map(b=>(
+                <button type="button" key={b.id} className="chip row" style={{gap:'.32rem'}}
+                        aria-pressed={category===b.id} onClick={()=>setCategory(b.id)}>
+                  {b.name}
+                  {b.kind==='protect' && <LockIcon size={11}/>}
+                </button>
+              ))}
             </div>
-
-            {category==='other' && (
-              <div style={{marginTop:'.7rem'}}>
-                <input value={otherCategoryName} onChange={e=>setOtherCategoryName(e.target.value)} placeholder="Name this category, e.g. Medicine" style={{
-                  width:'100%', padding:'.75rem .9rem', borderRadius:'var(--r-md)', border:'1px solid var(--app-border)',
-                  background:'var(--app-surface)', fontSize:'.88rem', color:'var(--app-ink)'
-                }}/>
-              </div>
-            )}
 
             <label htmlFor="txn-date" className="eyebrow" style={{display:'block', marginTop:'1.1rem', marginBottom:'.4rem'}}>Date</label>
             <div className="row" style={{gap:'.6rem', border:'1px solid var(--app-border)', background:'var(--app-surface)', borderRadius:'var(--r-md)', padding:'.7rem .9rem'}}>
@@ -1079,7 +1427,7 @@ function TransactionsPage(){
             <div className="eyebrow" style={{marginTop:'1.1rem', marginBottom:'.6rem'}}>New Income</div>
             <div className="card" style={{textAlign:'center', background:'var(--brand-tint)', border:'1px solid transparent'}}>
               <div className="tabular" style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.9rem', color:'var(--brand-strong)'}}>
-                {PESO(toNum(incomeAmount))}
+                {PESO(incomeNum)}
               </div>
               <div style={{fontSize:'.8rem', color:'var(--brand)', marginTop:'.5rem', lineHeight:1.4}}>
                 Your Money Plan will determine how this income is allocated.
@@ -1092,12 +1440,11 @@ function TransactionsPage(){
           <>
             <div className="eyebrow" style={{marginTop:'1.1rem', marginBottom:'.4rem'}}>From Bucket</div>
             <div className="row" style={{flexWrap:'wrap', gap:'.5rem'}}>
-              {TRANSFER_BUCKET_IDS.map(id=>{
-                const b = BUCKET_LOOKUP[id];
-                const disabled = id===toBucket;
+              {liveBuckets.map(b=>{
+                const disabled = b.id===toBucket;
                 return (
-                  <button type="button" key={id} className="chip row" style={{gap:'.32rem', opacity:disabled ? 0.4 : 1, cursor:disabled?'not-allowed':'pointer'}}
-                          disabled={disabled} aria-pressed={fromBucket===id} onClick={()=>selectFromBucket(id)}>
+                  <button type="button" key={b.id} className="chip row" style={{gap:'.32rem', opacity:disabled ? 0.4 : 1, cursor:disabled?'not-allowed':'pointer'}}
+                          disabled={disabled} aria-pressed={fromBucket===b.id} onClick={()=>selectFromBucket(b.id)}>
                     {b.name}{b.kind==='protect' && <LockIcon size={11}/>}
                   </button>
                 );
@@ -1107,12 +1454,11 @@ function TransactionsPage(){
 
             <div className="eyebrow" style={{marginTop:'1.1rem', marginBottom:'.4rem'}}>To Bucket</div>
             <div className="row" style={{flexWrap:'wrap', gap:'.5rem'}}>
-              {TRANSFER_BUCKET_IDS.map(id=>{
-                const b = BUCKET_LOOKUP[id];
-                const disabled = id===fromBucket;
+              {liveBuckets.map(b=>{
+                const disabled = b.id===fromBucket;
                 return (
-                  <button type="button" key={id} className="chip row" style={{gap:'.32rem', opacity:disabled ? 0.4 : 1, cursor:disabled?'not-allowed':'pointer'}}
-                          disabled={disabled} aria-pressed={toBucket===id} onClick={()=>selectToBucket(id)}>
+                  <button type="button" key={b.id} className="chip row" style={{gap:'.32rem', opacity:disabled ? 0.4 : 1, cursor:disabled?'not-allowed':'pointer'}}
+                          disabled={disabled} aria-pressed={toBucket===b.id} onClick={()=>selectToBucket(b.id)}>
                     {b.name}{b.kind==='protect' && <LockIcon size={11}/>}
                   </button>
                 );
@@ -1196,8 +1542,8 @@ function TransactionsPage(){
 
 const GOAL_FUNDING_BUCKETS = ['savings','living','bills','family','wants'];
 
-function GoalsPage(){
-  const [goals, setGoals] = useState(()=>GOALS.map(g=>({...g})));
+function GoalsPage({goals, setGoals, buckets}){
+  const bucketLookup = Object.fromEntries(buckets.map(b=>[b.id,b]));
 
   const [addOpen, setAddOpen] = useState(false);
   const [formName, setFormName] = useState('');
@@ -1455,7 +1801,7 @@ function GoalsPage(){
               <div className="row" style={{flexWrap:'wrap', gap:'.5rem'}}>
                 {GOAL_FUNDING_BUCKETS.map(id=>(
                   <button type="button" key={id} className="chip" aria-pressed={addMoneyBucket===id} onClick={()=>setAddMoneyBucket(id)}>
-                    {BUCKET_LOOKUP[id].name}
+                    {bucketLookup[id] ? bucketLookup[id].name : id}
                   </button>
                 ))}
               </div>
@@ -1482,26 +1828,49 @@ function GoalsPage(){
 
 const INSIGHTS_MONTHS = ['July 2026','August 2026','September 2026','October 2026','November 2026'];
 
-function InsightsPage(){
+function InsightsPage({income, buckets}){
   const [monthIndex, setMonthIndex] = useState(INSIGHTS_MONTHS.indexOf(CURRENT_MONTH));
   const selectedMonth = INSIGHTS_MONTHS[monthIndex];
   const isPopulated = selectedMonth === CURRENT_MONTH;
 
-  const spentPctOfIncome = Math.round((spentTotal/INCOME)*100);
-  const categoryRows = spentBuckets.map(b=>({...b, pct: Math.round((b.used/b.amount)*100)}));
-  const breakdownRows = [...spentBuckets].sort((a,b)=>b.used-a.used);
-  const maxBreakdown = Math.max(...breakdownRows.map(r=>r.used));
-  const protectedBuckets = BUCKETS.filter(b=>b.kind==='protect');
+  const {liveBuckets, allSpent, deficit, protectedRemainingTotal, effectiveProtectedRemaining, availableToSpend} = deriveFinancialSummary(buckets, income);
+  const bucketLookup = Object.fromEntries(liveBuckets.map(b=>[b.id,b]));
+  const isOverspent = deficit > 0;
+  const isProtectedShortfall = !isOverspent && effectiveProtectedRemaining < protectedRemainingTotal;
 
-  const wantsBucket = BUCKET_LOOKUP.wants;
-  const wantsPct = Math.round((wantsBucket.used/wantsBucket.amount)*100);
-  const wantsRemaining = wantsBucket.amount - wantsBucket.used;
-  const livingBucket = BUCKET_LOOKUP.living;
-  const livingPct = Math.round((livingBucket.used/livingBucket.amount)*100);
+  // Uncapped — honest even past 100%; only the progress BAR WIDTH gets clamped, same pattern as BucketRow.
+  const spentPctOfIncome = income>0 ? Math.round((allSpent/income)*100) : 0;
+  const spentBarWidth = Math.min(100, spentPctOfIncome);
 
-  const spentSharePct = Math.round((spentTotal/INCOME)*100);
-  const protectedSharePct = Math.round((protectedTotal/INCOME)*100);
-  const availableSharePct = 100 - spentSharePct - protectedSharePct;
+  // Actual spending activity across ALL buckets (spend AND protect) — allocation alone is not
+  // spending, so only buckets with real used>0 appear here; a Savings/Emergency withdrawal is
+  // still real spending and must not be hidden from this analysis.
+  const spendingRows = liveBuckets
+    .filter(b=>b.used>0)
+    .map(b=>({...b, pct: b.amount>0 ? Math.round((b.used/b.amount)*100) : 0}));
+  const breakdownRows = [...spendingRows].sort((a,b)=>b.used-a.used);
+  const maxBreakdown = Math.max(0, ...breakdownRows.map(r=>r.used));
+  const protectedBuckets = liveBuckets.filter(b=>b.kind==='protect');
+
+  const wantsBucket = bucketLookup.wants;
+  const wantsPct = wantsBucket.amount>0 ? Math.round((wantsBucket.used/wantsBucket.amount)*100) : 0;
+  const wantsRemaining = Math.max(0, wantsBucket.amount - wantsBucket.used);
+  const livingBucket = bucketLookup.living;
+  const livingPct = livingBucket.amount>0 ? Math.round((livingBucket.used/livingBucket.amount)*100) : 0;
+  // Status must agree with actual spend vs allocation — mirrors BucketRow's own over-budget check
+  // (used > amount) rather than a percentage, so it can never say "on track" while over budget.
+  // amount<=0 is handled without division: over-budget only needs used>amount, and "fully used"
+  // is only meaningful when there was a positive amount to fully use.
+  const livingOverBudget = livingBucket.used > livingBucket.amount;
+  const livingFullyUsed = livingBucket.amount>0 && livingBucket.used===livingBucket.amount;
+  const livingOverBy = livingBucket.used - livingBucket.amount;
+
+  // "Where Your Income Stands" bar segments — bounded so they can never overflow the income bar.
+  // When overspent, Spent alone fills the bar (Protected/Available both effectively zero) and the
+  // deficit is communicated separately rather than as a fake fourth slice of "income".
+  const spentSharePct = isOverspent ? 100 : (income>0 ? Math.round((allSpent/income)*100) : 0);
+  const protectedSharePct = isOverspent ? 0 : (income>0 ? Math.round((effectiveProtectedRemaining/income)*100) : 0);
+  const availableSharePct = isOverspent ? 0 : (income>0 ? Math.max(0, 100 - spentSharePct - protectedSharePct) : 0);
 
   return (
     <div className="app-scroll">
@@ -1538,15 +1907,15 @@ function InsightsPage(){
             <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.9rem'}}>
               <div>
                 <div className="muted" style={{fontSize:'.74rem'}}>Income</div>
-                <div className="tabular" style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.25rem', marginTop:'.15rem'}}>{PESO(INCOME)}</div>
+                <div className="tabular" style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.25rem', marginTop:'.15rem'}}>{PESO(income)}</div>
               </div>
               <div>
                 <div className="muted" style={{fontSize:'.74rem'}}>Spent</div>
-                <div className="tabular" style={{fontWeight:800, fontSize:'1.1rem', marginTop:'.15rem'}}>{PESO(spentTotal)}</div>
+                <div className="tabular" style={{fontWeight:800, fontSize:'1.1rem', marginTop:'.15rem'}}>{PESO(allSpent)}</div>
               </div>
               <div>
                 <div className="muted" style={{fontSize:'.74rem'}}>Protected</div>
-                <div className="tabular" style={{fontWeight:800, fontSize:'1.1rem', marginTop:'.15rem', color:'var(--brand)'}}>{PESO(protectedTotal)}</div>
+                <div className="tabular" style={{fontWeight:800, fontSize:'1.1rem', marginTop:'.15rem', color:'var(--brand)'}}>{PESO(effectiveProtectedRemaining)}</div>
               </div>
               <div>
                 <div className="muted" style={{fontSize:'.74rem'}}>Available</div>
@@ -1555,13 +1924,19 @@ function InsightsPage(){
             </div>
 
             <div className="row between" style={{marginTop:'1.1rem', paddingTop:'.9rem', borderTop:'1px solid var(--app-border)'}}>
-              <span className="badge" style={{background:'var(--status-good-bg)', color:'var(--status-good-text)'}}>
-                <CheckCircleIcon size={13}/> Money Health: On Track
-              </span>
+              {isOverspent ? (
+                <span className="badge" style={{background:'var(--status-bad-bg)', color:'var(--status-bad-text)'}}>
+                  <AlertTriangleIcon size={13}/> Money Health: Overspent
+                </span>
+              ) : (
+                <span className="badge" style={{background:'var(--status-good-bg)', color:'var(--status-good-text)'}}>
+                  <CheckCircleIcon size={13}/> Money Health: On Track
+                </span>
+              )}
               <span className="muted tabular" style={{fontSize:'.78rem'}}>{spentPctOfIncome}% of income spent</span>
             </div>
             <div className="progress-track" style={{marginTop:'.6rem'}}>
-              <div className="progress-fill" style={{width:spentPctOfIncome+'%', background:'var(--brand)'}}/>
+              <div className="progress-fill" style={{width:spentBarWidth+'%', background: isOverspent ? 'var(--status-bad-icon)' : 'var(--brand)'}}/>
             </div>
           </div>
 
@@ -1569,7 +1944,7 @@ function InsightsPage(){
             <span className="section-title">Spending by Category</span>
           </div>
           <div className="card" style={{display:'grid', gap:'.9rem'}}>
-            {categoryRows.map(b=>(
+            {spendingRows.map(b=>(
               <div key={b.id}>
                 <div className="row" style={{gap:'.5rem'}}>
                   <div className="bucket-icon" style={{background:b.color, width:28, height:28}}><b.Icon size={13}/></div>
@@ -1586,7 +1961,7 @@ function InsightsPage(){
             ))}
             <div className="row between" style={{paddingTop:'.8rem', borderTop:'1px solid var(--app-border)'}}>
               <span style={{fontWeight:800, fontSize:'.88rem'}}>Total Spent</span>
-              <span className="tabular" style={{fontWeight:800, fontSize:'.88rem'}}>{PESO(spentTotal)}</span>
+              <span className="tabular" style={{fontWeight:800, fontSize:'.88rem'}}>{PESO(allSpent)}</span>
             </div>
           </div>
 
@@ -1603,14 +1978,18 @@ function InsightsPage(){
                     <LockIcon size={11} className="faint"/>
                   </div>
                 </div>
-                <span className="tabular" style={{fontWeight:700, fontSize:'.88rem'}}>{PESO(b.amount)}</span>
+                <span className="tabular" style={{fontWeight:700, fontSize:'.88rem'}}>{PESO(Math.max(0, b.amount-b.used))}</span>
               </div>
             ))}
             <div className="row between" style={{paddingTop:'.75rem', marginTop:'.2rem', borderTop:'1px solid var(--app-border)'}}>
               <span style={{fontWeight:800, fontSize:'.88rem'}}>Total Protected</span>
-              <span className="tabular" style={{fontWeight:800, fontSize:'.88rem', color:'var(--brand)'}}>{PESO(protectedTotal)}</span>
+              <span className="tabular" style={{fontWeight:800, fontSize:'.88rem', color:'var(--brand)'}}>{PESO(effectiveProtectedRemaining)}</span>
             </div>
-            <div className="muted" style={{fontSize:'.8rem', marginTop:'.7rem', lineHeight:1.4}}>Money you&rsquo;ve intentionally set aside.</div>
+            <div className="muted" style={{fontSize:'.8rem', marginTop:'.7rem', lineHeight:1.4}}>
+              {effectiveProtectedRemaining < protectedRemainingTotal
+                ? `Your plan sets aside ${PESO(protectedRemainingTotal)}, but only ${PESO(effectiveProtectedRemaining)} of that is actually left after other spending.`
+                : 'Money you’ve intentionally set aside.'}
+            </div>
           </div>
 
           <div className="row between" style={{marginTop:'1.4rem', marginBottom:'.6rem'}}>
@@ -1628,25 +2007,69 @@ function InsightsPage(){
               </div>
             </div>
 
-            <div className="card" style={{borderLeft:'4px solid var(--status-good-icon)', display:'flex', gap:'.7rem'}}>
-              <div className="icon-btn" style={{background:'var(--status-good-bg)', color:'var(--status-good-icon)', border:'none', width:34, height:34, flexShrink:0}}>
-                <CheckCircleIcon size={17}/>
+            {livingOverBudget ? (
+              <div className="card" style={{borderLeft:'4px solid var(--status-bad-icon)', display:'flex', gap:'.7rem'}}>
+                <div className="icon-btn" style={{background:'var(--status-bad-bg)', color:'var(--status-bad-icon)', border:'none', width:34, height:34, flexShrink:0}}>
+                  <AlertTriangleIcon size={17}/>
+                </div>
+                <div>
+                  <div style={{fontWeight:800, fontSize:'.9rem'}}>Living is over budget</div>
+                  <div className="muted" style={{fontSize:'.82rem', marginTop:'.15rem'}}>You&rsquo;ve spent {PESO(livingOverBy)} over your Living budget.</div>
+                </div>
               </div>
-              <div>
-                <div style={{fontWeight:800, fontSize:'.9rem'}}>Living is on track</div>
-                <div className="muted" style={{fontSize:'.82rem', marginTop:'.15rem'}}>You&rsquo;ve used only {livingPct}% of your Living budget.</div>
+            ) : livingFullyUsed ? (
+              <div className="card" style={{borderLeft:'4px solid var(--status-warn-icon)', display:'flex', gap:'.7rem'}}>
+                <div className="icon-btn" style={{background:'var(--status-warn-bg)', color:'var(--status-warn-icon)', border:'none', width:34, height:34, flexShrink:0}}>
+                  <AlertTriangleIcon size={17}/>
+                </div>
+                <div>
+                  <div style={{fontWeight:800, fontSize:'.9rem'}}>Living budget fully used</div>
+                  <div className="muted" style={{fontSize:'.82rem', marginTop:'.15rem'}}>You&rsquo;ve used your full {PESO(livingBucket.amount)} Living budget.</div>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="card" style={{borderLeft:'4px solid var(--status-good-icon)', display:'flex', gap:'.7rem'}}>
+                <div className="icon-btn" style={{background:'var(--status-good-bg)', color:'var(--status-good-icon)', border:'none', width:34, height:34, flexShrink:0}}>
+                  <CheckCircleIcon size={17}/>
+                </div>
+                <div>
+                  <div style={{fontWeight:800, fontSize:'.9rem'}}>Living is on track</div>
+                  <div className="muted" style={{fontSize:'.82rem', marginTop:'.15rem'}}>You&rsquo;ve used only {livingPct}% of your Living budget.</div>
+                </div>
+              </div>
+            )}
 
-            <div className="card" style={{borderLeft:'4px solid var(--brand)', display:'flex', gap:'.7rem'}}>
-              <div className="icon-btn brand" style={{width:34, height:34, flexShrink:0}}>
-                <LockIcon size={16}/>
+            {isOverspent ? (
+              <div className="card" style={{borderLeft:'4px solid var(--status-bad-icon)', display:'flex', gap:'.7rem'}}>
+                <div className="icon-btn" style={{background:'var(--status-bad-bg)', color:'var(--status-bad-icon)', border:'none', width:34, height:34, flexShrink:0}}>
+                  <AlertTriangleIcon size={17}/>
+                </div>
+                <div>
+                  <div style={{fontWeight:800, fontSize:'.9rem'}}>You&rsquo;re overspent</div>
+                  <div className="muted" style={{fontSize:'.82rem', marginTop:'.15rem'}}>You&rsquo;ve spent {PESO(deficit)} more than your income this month &mdash; no money is currently protected.</div>
+                </div>
               </div>
-              <div>
-                <div style={{fontWeight:800, fontSize:'.9rem'}}>Protected money is intact</div>
-                <div className="muted" style={{fontSize:'.82rem', marginTop:'.15rem'}}>{PESO(protectedTotal)} remains protected in Savings and Emergency.</div>
+            ) : isProtectedShortfall ? (
+              <div className="card" style={{borderLeft:'4px solid var(--status-warn-icon)', display:'flex', gap:'.7rem'}}>
+                <div className="icon-btn" style={{background:'var(--status-warn-bg)', color:'var(--status-warn-icon)', border:'none', width:34, height:34, flexShrink:0}}>
+                  <LockIcon size={16}/>
+                </div>
+                <div>
+                  <div style={{fontWeight:800, fontSize:'.9rem'}}>Protected money is at risk</div>
+                  <div className="muted" style={{fontSize:'.82rem', marginTop:'.15rem'}}>Only {PESO(effectiveProtectedRemaining)} of your {PESO(protectedRemainingTotal)} planned protected money is actually available right now.</div>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="card" style={{borderLeft:'4px solid var(--brand)', display:'flex', gap:'.7rem'}}>
+                <div className="icon-btn brand" style={{width:34, height:34, flexShrink:0}}>
+                  <LockIcon size={16}/>
+                </div>
+                <div>
+                  <div style={{fontWeight:800, fontSize:'.9rem'}}>Protected money is intact</div>
+                  <div className="muted" style={{fontSize:'.82rem', marginTop:'.15rem'}}>{PESO(effectiveProtectedRemaining)} remains protected in Savings and Emergency.</div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="row between" style={{marginTop:'1.4rem', marginBottom:'.6rem'}}>
@@ -1657,7 +2080,7 @@ function InsightsPage(){
               <div key={b.id} className="row" style={{gap:'.6rem'}}>
                 <span className="muted" style={{fontSize:'.8rem', fontWeight:600, width:'3.6rem', flexShrink:0}}>{b.name}</span>
                 <div className="progress-track" style={{flex:1}}>
-                  <div className="progress-fill" style={{width:(b.used/maxBreakdown*100)+'%', background:b.color}}/>
+                  <div className="progress-fill" style={{width:(maxBreakdown>0 ? (b.used/maxBreakdown*100) : 0)+'%', background:b.color}}/>
                 </div>
                 <span className="tabular" style={{fontSize:'.8rem', fontWeight:700, width:'4.4rem', textAlign:'right', flexShrink:0}}>{PESO(b.used)}</span>
               </div>
@@ -1676,21 +2099,21 @@ function InsightsPage(){
             <div style={{display:'grid', gap:'.55rem', marginTop:'1rem'}}>
               <div className="row between">
                 <span className="muted" style={{fontSize:'.84rem'}}>Income</span>
-                <span className="tabular" style={{fontWeight:800, fontSize:'.88rem'}}>{PESO(INCOME)}</span>
+                <span className="tabular" style={{fontWeight:800, fontSize:'.88rem'}}>{PESO(income)}</span>
               </div>
               <div className="row between">
                 <div className="row" style={{gap:'.4rem'}}>
                   <span style={{width:9,height:9,borderRadius:99,background:'var(--app-ink-faint)',display:'inline-block'}}/>
                   <span className="muted" style={{fontSize:'.84rem'}}>Spent</span>
                 </div>
-                <span className="tabular" style={{fontWeight:700, fontSize:'.88rem'}}>{PESO(spentTotal)}</span>
+                <span className="tabular" style={{fontWeight:700, fontSize:'.88rem'}}>{PESO(allSpent)}</span>
               </div>
               <div className="row between">
                 <div className="row" style={{gap:'.4rem'}}>
                   <span style={{width:9,height:9,borderRadius:99,background:'var(--brand)',display:'inline-block'}}/>
                   <span className="muted" style={{fontSize:'.84rem'}}>Protected</span>
                 </div>
-                <span className="tabular" style={{fontWeight:700, fontSize:'.88rem'}}>{PESO(protectedTotal)}</span>
+                <span className="tabular" style={{fontWeight:700, fontSize:'.88rem'}}>{PESO(effectiveProtectedRemaining)}</span>
               </div>
               <div className="row between">
                 <div className="row" style={{gap:'.4rem'}}>
@@ -1700,9 +2123,15 @@ function InsightsPage(){
                 <span className="tabular" style={{fontWeight:700, fontSize:'.88rem'}}>{PESO(availableToSpend)}</span>
               </div>
             </div>
-            <div className="muted" style={{fontSize:'.78rem', marginTop:'.9rem', lineHeight:1.4, textAlign:'center'}}>
-              Income = Spent + Protected + Available
-            </div>
+            {isOverspent ? (
+              <div className="muted" style={{fontSize:'.78rem', marginTop:'.9rem', lineHeight:1.4, textAlign:'center', color:'var(--status-bad-text)', fontWeight:700}}>
+                {PESO(deficit)} over income
+              </div>
+            ) : (
+              <div className="muted" style={{fontSize:'.78rem', marginTop:'.9rem', lineHeight:1.4, textAlign:'center'}}>
+                Income = Spent + Protected + Available
+              </div>
+            )}
           </div>
         </>
       )}
@@ -1738,7 +2167,7 @@ function SettingsSection({title, children}){
   );
 }
 
-function SettingsPage({navigate}){
+function SettingsPage({navigate, income, setIncome, buckets}){
   const [toast, setToast] = useState('');
   function showToast(msg){
     setToast(msg);
@@ -1756,17 +2185,17 @@ function SettingsPage({navigate}){
     setProfileOpen(false);
   }
 
-  const [incomeAmount, setIncomeAmount] = useState(String(INCOME));
   const [incomeSchedule, setIncomeSchedule] = useState('Monthly');
   const [payday, setPayday] = useState('1st');
   const [incomeOpen, setIncomeOpen] = useState(false);
-  const [formIncome, setFormIncome] = useState(incomeAmount);
+  const [formIncome, setFormIncome] = useState(String(income));
   const [formSchedule, setFormSchedule] = useState(incomeSchedule);
   const [formPayday, setFormPayday] = useState(payday);
-  function openIncome(){ setFormIncome(incomeAmount); setFormSchedule(incomeSchedule); setFormPayday(payday); setIncomeOpen(true); }
+  function openIncome(){ setFormIncome(String(income)); setFormSchedule(incomeSchedule); setFormPayday(payday); setIncomeOpen(true); }
   function saveIncome(e){
     e.preventDefault();
-    setIncomeAmount(formIncome || incomeAmount);
+    // Settings REPLACES the total monthly income (unlike Add Transaction's Income, which is additive).
+    setIncome(parseInt(formIncome, 10) || 0);
     setIncomeSchedule(formSchedule);
     setPayday(formPayday);
     setIncomeOpen(false);
@@ -1782,7 +2211,7 @@ function SettingsPage({navigate}){
   const currentCurrency = CURRENCIES.find(c=>c.code===currency);
 
   const [budgetOpen, setBudgetOpen] = useState(false);
-  const totalPlanPct = BUCKETS.reduce((s,b)=>s+b.pct,0);
+  const totalPlanPct = buckets.reduce((s,b)=>s+b.pct,0);
 
   const [theme, setTheme] = useState('system');
   useEffect(()=>{
@@ -1826,7 +2255,7 @@ function SettingsPage({navigate}){
       </div>
 
       <SettingsSection title="Money Setup">
-        <SettingsRow Icon={WalletIcon} label="Monthly Income" value={PESO(toNum(incomeAmount))} onClick={openIncome}/>
+        <SettingsRow Icon={WalletIcon} label="Monthly Income" value={PESO(income)} onClick={openIncome}/>
         <SettingsRow Icon={CalendarIcon} label="Income Schedule" value={incomeSchedule} onClick={openIncome}/>
         <SettingsRow Icon={CoinsIcon} label="Currency" value={`${currentCurrency.code} — ${currentCurrency.name}`} onClick={()=>setCurrencyOpen(true)}/>
         <SettingsRow Icon={SlidersIcon} label="Budget Method" value="Custom Percentage Plan" onClick={()=>setBudgetOpen(true)}/>
@@ -1963,7 +2392,7 @@ function SettingsPage({navigate}){
           }}/>
 
           <div className="muted" style={{fontSize:'.76rem', marginTop:'.9rem', lineHeight:1.4}}>
-            Prototype only &mdash; this does not change your Home or Plan totals yet.
+            This replaces your total monthly income &mdash; Home and Plan update immediately.
           </div>
 
           <div className="row" style={{gap:'.6rem', marginTop:'1.3rem'}}>
@@ -2017,7 +2446,7 @@ function SettingsPage({navigate}){
           <div className="muted" style={{fontSize:'.82rem', marginBottom:'1rem'}}>Your current allocation</div>
 
           <div style={{display:'grid', gap:'.1rem'}}>
-            {BUCKETS.map((b,i)=>(
+            {buckets.map((b,i)=>(
               <div key={b.id} className="row between" style={{padding:'.55rem 0', borderTop:i?'1px solid var(--app-border)':'none'}}>
                 <div className="row" style={{gap:'.6rem'}}>
                   <div className="bucket-icon" style={{background:b.color, width:28, height:28}}><b.Icon size={13}/></div>
@@ -2073,7 +2502,7 @@ function SettingsPage({navigate}){
   );
 }
 
-function OnboardingPage({navigate}){
+function OnboardingPage({navigate, buckets}){
   const [step, setStep] = useState(0);
   const last = step === 2;
   return (
@@ -2105,10 +2534,10 @@ function OnboardingPage({navigate}){
             </p>
             <div className="card" style={{marginTop:'1.3rem'}}>
               <div style={{display:'flex', justifyContent:'center'}}>
-                <Donut size={132} thickness={16} segments={BUCKETS.map(b=>({pct:b.pct,color:b.color}))}/>
+                <Donut size={132} thickness={16} segments={buckets.map(b=>({pct:b.pct,color:b.color}))}/>
               </div>
               <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.4rem .8rem', marginTop:'1rem'}}>
-                {BUCKETS.map(b=>(
+                {buckets.map(b=>(
                   <div key={b.id} className="row" style={{gap:'.4rem', fontSize:'.78rem'}}>
                     <span style={{width:8,height:8,borderRadius:99,background:b.color,display:'inline-block'}}/>
                     <span style={{fontWeight:600}}>{b.name}</span>
@@ -2121,12 +2550,15 @@ function OnboardingPage({navigate}){
         )}
         {step===2 && (
           <div>
-            <h2 style={{fontSize:'1.35rem', fontWeight:800, textAlign:'center'}}>Your first month is ready</h2>
+            <h2 style={{fontSize:'1.35rem', fontWeight:800, textAlign:'center'}}>Your starting plan is ready</h2>
+            <p className="muted" style={{fontSize:'.88rem', marginTop:'.5rem', textAlign:'center', lineHeight:1.5}}>
+              These are suggested percentages &mdash; the peso amounts will fill in once you add your income.
+            </p>
             <div className="card" style={{marginTop:'1.2rem', textAlign:'center'}}>
-              <div className="eyebrow">Monthly Income &middot; demo</div>
-              <div className="tabular" style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.8rem', marginTop:'.2rem'}}>{PESO(INCOME)}</div>
+              <div className="eyebrow">Suggested Allocation</div>
+              <div className="tabular" style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.8rem', marginTop:'.2rem'}}>{buckets.reduce((s,b)=>s+b.pct,0)}%</div>
               <div className="badge" style={{background:'var(--status-good-bg)', color:'var(--status-good-text)', marginTop:'.8rem'}}>
-                <CheckCircleIcon size={13}/> 100% allocated across 6 buckets
+                <CheckCircleIcon size={13}/> Split across 6 buckets
               </div>
             </div>
           </div>
@@ -2148,15 +2580,102 @@ function OnboardingPage({navigate}){
 /* ============================== app shell ============================== */
 function App(){
   const [route, navigate] = useRoute();
-  const [planBuckets, setPlanBuckets] = useState(initialPlanBuckets);
+  // Session-level shared financial state — the one source of truth every screen reads/writes.
+  // Resets on refresh by design (no localStorage/backend yet).
+  const [income, setIncome] = useState(0);
+  const [buckets, setBuckets] = useState(initialBuckets);
+  const [goals, setGoals] = useState(initialGoals);
+  // Session-only activity log — a record of successful Income/Expense actions, NOT a source of
+  // truth for current balances. Home/Plan/Insights continue to derive everything from income/buckets.
+  const [transactions, setTransactions] = useState([]);
+
+  // Corrects an existing EXPENSE transaction: reverses the OLD bucket effect and applies the NEW
+  // one in a single setBuckets pass, using the transaction's OWN stored old values (never trusting
+  // whatever the edit form currently shows) so the correction is always based on real prior state.
+  function editExpenseTransaction(id, changes){
+    const oldTxn = transactions.find(t=>t.id===id);
+    if(!oldTxn || oldTxn.type!=='expense') return;               // must exist and be an expense
+    const newAmount = Number(changes.amount);
+    const newBucketId = changes.bucketId;
+    if(!(newAmount>0)) return;                                    // amount must be a valid positive number
+    if(!buckets.some(b=>b.id===newBucketId)) return;               // new bucket must currently exist
+    if(!changes.date) return;                                      // date must be present
+    const oldAmount = oldTxn.amount;
+    const oldBucketId = oldTxn.bucketId;
+
+    setBuckets(bs => bs.map(b => {
+      if(b.id===oldBucketId && b.id===newBucketId){
+        // same bucket — apply the net delta once, never subtract-then-add as two separate updates
+        return {...b, used: Math.max(0, b.used - oldAmount + newAmount)};
+      }
+      if(b.id===oldBucketId){
+        // reverse the old effect (if the old bucket no longer exists, this simply matches nothing —
+        // nothing to subtract from, which is exactly correct, not an error)
+        return {...b, used: Math.max(0, b.used - oldAmount)};
+      }
+      if(b.id===newBucketId){
+        return {...b, used: b.used + newAmount};
+      }
+      return b;
+    }));
+
+    setTransactions(ts => ts.map(t => t.id===id
+      ? {...t, amount:newAmount, bucketId:newBucketId, note:(changes.note||'').trim(), date:changes.date}
+      : t
+    ));
+  }
+
+  // Deletes an existing EXPENSE transaction: reverses its bucket effect using the transaction's
+  // OWN stored amount/bucketId (never trusting form state), then removes the record. If the bucket
+  // no longer exists, there's simply nothing to reverse — the transaction is still safely removed.
+  function deleteExpenseTransaction(id){
+    const txn = transactions.find(t=>t.id===id);
+    if(!txn || txn.type!=='expense') return;
+    setBuckets(bs => bs.map(b => b.id===txn.bucketId ? {...b, used: Math.max(0, b.used - txn.amount)} : b));
+    setTransactions(ts => ts.filter(t => t.id!==id));
+  }
+
+  // Corrects an existing INCOME transaction. Income transactions are not the source of truth for
+  // total income — `income` is — so the correction is delta-based: subtract the transaction's OWN
+  // stored old amount and add the new one, rather than replacing or re-adding the full amount.
+  // Never touches buckets.used; bucket allocations simply re-derive from the new income naturally.
+  function editIncomeTransaction(id, changes){
+    const oldTxn = transactions.find(t=>t.id===id);
+    if(!oldTxn || oldTxn.type!=='income') return;              // must exist and be an income record
+    const newAmount = Number(changes.amount);
+    if(!(Number.isFinite(newAmount) && newAmount>0)) return;    // amount must be a valid positive number
+    if(!changes.date) return;                                   // date must be present
+    const oldAmount = oldTxn.amount;
+
+    setIncome(prev => Math.max(0, prev - oldAmount + newAmount));
+
+    setTransactions(ts => ts.map(t => t.id===id
+      ? {...t, amount:newAmount, source:changes.source, date:changes.date}
+      : t
+    ));
+  }
+
+  // Deletes an existing INCOME transaction: subtracts its OWN saved amount from shared `income`
+  // (never recomputed from transaction history — Settings can replace income independently of it),
+  // then removes the record. Never touches buckets.used; allocations simply re-derive from the
+  // lower income naturally, and may legitimately push the app into a partial-shortage/overspent state.
+  function deleteIncomeTransaction(id){
+    const txn = transactions.find(t=>t.id===id);
+    if(!txn || txn.type!=='income') return;
+    const savedAmount = txn.amount;
+    if(!(Number.isFinite(savedAmount) && savedAmount>0)) return;
+    setIncome(prev => Math.max(0, prev - savedAmount));
+    setTransactions(ts => ts.filter(t => t.id!==id));
+  }
+
   const pages = {
-    onboarding: <OnboardingPage navigate={navigate}/>,
-    home: <HomePage navigate={navigate}/>,
-    plan: <PlanPage buckets={planBuckets} setBuckets={setPlanBuckets}/>,
-    transactions: <TransactionsPage/>,
-    goals: <GoalsPage/>,
-    insights: <InsightsPage/>,
-    settings: <SettingsPage navigate={navigate}/>,
+    onboarding: <OnboardingPage navigate={navigate} buckets={buckets}/>,
+    home: <HomePage navigate={navigate} income={income} buckets={buckets} transactions={transactions} editExpenseTransaction={editExpenseTransaction} deleteExpenseTransaction={deleteExpenseTransaction} editIncomeTransaction={editIncomeTransaction} deleteIncomeTransaction={deleteIncomeTransaction}/>,
+    plan: <PlanPage buckets={buckets} setBuckets={setBuckets} income={income}/>,
+    transactions: <TransactionsPage income={income} setIncome={setIncome} buckets={buckets} setBuckets={setBuckets} transactions={transactions} setTransactions={setTransactions}/>,
+    goals: <GoalsPage goals={goals} setGoals={setGoals} buckets={buckets}/>,
+    insights: <InsightsPage income={income} buckets={buckets}/>,
+    settings: <SettingsPage navigate={navigate} income={income} setIncome={setIncome} buckets={buckets}/>,
   };
   return (
     <>
