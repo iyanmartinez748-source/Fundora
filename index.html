@@ -775,7 +775,7 @@ const INCOME_SOURCES = [
 ];
 
 /* ============================== tiny router ============================== */
-const ROUTES = ['onboarding','home','plan','transactions','goals','insights','settings'];
+const ROUTES = ['onboarding','home','plan','transactions','goals','insights','settings','reports'];
 function parseHash(){
   const h = window.location.hash.replace(/^#\/?/, '');
   return ROUTES.includes(h) ? h : 'home';
@@ -927,6 +927,79 @@ function incomeSourceLabelFor(sourceId){
 function formatTxnDate(dateStr){
   if(!dateStr) return '';
   return new Date(dateStr+'T00:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+}
+
+// ---- Reports V1: pure historical/current month calculation helpers ----
+// Everything here is read-only and computed at render time only — nothing here is ever persisted,
+// and none of it reads bucket.used (which is current-month-only as of Phase B3a2). A month's
+// numbers are always derived fresh from `transactions` (and, where a snapshot exists, `periods`),
+// so editing/deleting an old transaction naturally changes that month's report on the next render.
+
+// Shifts a 'YYYY-MM' key by `delta` whole months using the Date constructor's own local year/month
+// rollover (e.g. month index 12 correctly becomes next January) — never toISOString(). Used only
+// for Reports month-to-month navigation; the result is local component state, never persisted.
+function shiftMonthKey(monthKey, delta){
+  const [y, m] = monthKey.split('-').map(Number);
+  return localMonthKey(new Date(y, (m-1)+delta, 1));
+}
+
+// 'YYYY-MM' -> 'October 2026', parsed as LOCAL midnight on the 1st (mirrors formatTxnDate's own
+// local-midnight parsing convention) so the label can never drift a month due to UTC conversion.
+function formatMonthLabel(monthKey){
+  return new Date(monthKey+'-01T00:00:00').toLocaleDateString('en-US', {month:'long', year:'numeric'});
+}
+
+// Every expense transaction belonging to the given calendar month, in whatever order
+// `transactions` already is (newest-first, same as the live Activity Log).
+function getMonthlyExpenseTransactions(transactions, monthKey){
+  return transactions.filter(t => t.type==='expense' && t.date.slice(0,7)===monthKey);
+}
+
+// Resolves a single expense transaction's REPORT category identity: the frozen B2 snapshot first,
+// live bucket lookup only as an explicit, flagged fallback for pre-B2 transactions, and 'Unknown
+// category' when neither is available. Never invents a name/kind that was never actually stored —
+// this deliberately does NOT reuse bucketNameFor (that helper is for the current, live-resolution
+// Activity Log only, and always finds a name; Reports needs to know when it did NOT find one).
+function resolveReportCategory(txn, buckets){
+  if(txn.bucketNameSnapshot){
+    return { name: txn.bucketNameSnapshot, kind: txn.bucketKindSnapshot || null, isFallback:false };
+  }
+  const liveBucket = buckets.find(b=>b.id===txn.bucketId);
+  if(liveBucket){
+    return { name: liveBucket.name, kind: liveBucket.kind, isFallback:true };
+  }
+  return { name:'Unknown category', kind:null, isFallback:true };
+}
+
+// Sums a month's expenses whose RESOLVED category kind is 'protect' — always computable from
+// transactions alone, independent of whether a period snapshot exists for the month.
+function sumProtectedExpenseUsage(monthTxns, buckets){
+  return monthTxns.reduce((s,t) => resolveReportCategory(t, buckets).kind==='protect' ? s+t.amount : s, 0);
+}
+
+// Sums a month's expenses for one specific bucketId — used to match a live/period-snapshot
+// category row to its actual spending without ever trusting bucket.used (current-month-only).
+function sumExpensesForBucket(monthTxns, bucketId){
+  return monthTxns.reduce((s,t) => t.bucketId===bucketId ? s+t.amount : s, 0);
+}
+
+// Groups a month's expenses by bucketId (never by display name, so two different historical
+// buckets that both fall back to 'Unknown category' are never silently merged into one row),
+// sorted by amount descending. A transaction whose bucketId matches no live bucket and has no
+// snapshot still gets its own group under that raw id — never discarded. The group's displayed
+// name/kind comes from whichever transaction in the group is encountered first; since `monthTxns`
+// is already newest-first, this naturally reflects the most recent snapshot within the month.
+function groupMonthlyExpensesByCategory(monthTxns, buckets){
+  const groups = {};
+  for(const t of monthTxns){
+    let g = groups[t.bucketId];
+    if(!g){
+      const cat = resolveReportCategory(t, buckets);
+      g = groups[t.bucketId] = { bucketId:t.bucketId, name:cat.name, kind:cat.kind, isFallback:cat.isFallback, amount:0 };
+    }
+    g.amount += t.amount;
+  }
+  return Object.values(groups).sort((a,b)=>b.amount-a.amount);
 }
 
 /* ============================== pages ============================== */
@@ -2386,7 +2459,7 @@ function GoalsPage({goals, setGoals, buckets}){
 
 const INSIGHTS_MONTHS = ['July 2026','August 2026','September 2026','October 2026','November 2026'];
 
-function InsightsPage({income, buckets}){
+function InsightsPage({navigate, income, buckets}){
   const [monthIndex, setMonthIndex] = useState(INSIGHTS_MONTHS.indexOf(CURRENT_MONTH));
   const selectedMonth = INSIGHTS_MONTHS[monthIndex];
   const isPopulated = selectedMonth === CURRENT_MONTH;
@@ -2437,6 +2510,20 @@ function InsightsPage({income, buckets}){
         <div className="page-title">Insights</div>
         <div className="page-sub">Understand where your money goes.</div>
       </div>
+
+      <button type="button" onClick={()=>navigate('reports')} className="card" style={{
+        display:'flex', alignItems:'center', gap:'.75rem', width:'100%', textAlign:'left',
+        border:'none', font:'inherit', color:'inherit', cursor:'pointer', marginBottom:'1.1rem',
+      }}>
+        <div className="icon-btn brand" style={{width:40, height:40, flexShrink:0}}>
+          <ReceiptIcon size={18}/>
+        </div>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:800, fontSize:'.92rem'}}>Monthly Reports</div>
+          <div className="muted" style={{fontSize:'.8rem', marginTop:'.1rem'}}>Review your spending and monthly plan history.</div>
+        </div>
+        <ChevronRightIcon size={18} className="faint"/>
+      </button>
 
       <div className="row between" style={{background:'var(--app-surface-2)', borderRadius:'var(--r-pill)', padding:'.4rem .5rem'}}>
         <button type="button" className="icon-btn" style={{background:'var(--app-surface)'}} aria-label="Previous month"
@@ -2693,6 +2780,207 @@ function InsightsPage({income, buckets}){
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// Reports V1: strictly READ-ONLY — receives no setters at all (no setIncome/setBuckets/setGoals/
+// setTransactions/setPeriods), so viewing or navigating this screen can never mutate financial
+// data or period history. Month selection is local component state only, seeded from today and
+// never written back to `periods` or localStorage. Uses the SAME calculation model for the current
+// month as for any historical month (transactions filtered by month + periods[monthKey]) — it
+// never reads bucket.used, which is current-month-only as of Phase B3a2.
+function ReportsPage({navigate, buckets, transactions, periods}){
+  const todayKey = localMonthKey(new Date());
+  const [selectedMonthKey, setSelectedMonthKey] = useState(todayKey);
+  const isCurrentSelected = selectedMonthKey === todayKey;
+
+  const monthTxns = getMonthlyExpenseTransactions(transactions, selectedMonthKey);
+  const totalExpenses = monthTxns.reduce((s,t)=>s+t.amount, 0);
+  const usedFromProtected = sumProtectedExpenseUsage(monthTxns, buckets);
+  const categoryRows = groupMonthlyExpensesByCategory(monthTxns, buckets);
+
+  // periods is never fabricated here — a missing entry means exactly that: no plan/income
+  // snapshot was ever recorded for this month. Nothing below invents one.
+  const period = periods[selectedMonthKey] || null;
+  const plannedIncome = period ? period.incomeSnapshot : null;
+  const planRemaining = period ? plannedIncome - totalExpenses : null;
+  const isPlanOverspent = period!=null && planRemaining < 0;
+
+  // Allocation is always derived from the FROZEN period snapshot's own income/pct — never from
+  // current live income/buckets, which would misattribute today's plan to a past month.
+  const planRows = period ? period.bucketPlanSnapshot.map(row => {
+    const allocation = bucketAmountFor(period.incomeSnapshot, row.pct);
+    const used = sumExpensesForBucket(monthTxns, row.id);
+    return { ...row, allocation, used, overBudget: used > allocation };
+  }) : [];
+  const protectedPlanRows = planRows.filter(r => r.kind==='protect');
+  const protectedAllocation = protectedPlanRows.reduce((s,r)=>s+r.allocation, 0);
+  const protectedRemaining = protectedPlanRows.reduce((s,r)=>s+Math.max(0, r.allocation-r.used), 0);
+
+  return (
+    <div className="app-scroll">
+      <div className="row" style={{gap:'.6rem', alignItems:'center', marginBottom:'1.1rem'}}>
+        <button type="button" className="icon-btn" aria-label="Back to Insights" onClick={()=>navigate('insights')}>
+          <ChevronLeftIcon size={18}/>
+        </button>
+        <div>
+          <div style={{fontWeight:800, fontSize:'1.2rem'}}>Monthly Report</div>
+          <div className="muted" style={{fontSize:'.83rem', marginTop:'.1rem'}}>Spending and plan history, one month at a time.</div>
+        </div>
+      </div>
+
+      <div className="row between" style={{background:'var(--app-surface-2)', borderRadius:'var(--r-pill)', padding:'.4rem .5rem', marginBottom:'1.1rem'}}>
+        <button type="button" className="icon-btn" style={{background:'var(--app-surface)'}} aria-label="Previous month"
+                onClick={()=>setSelectedMonthKey(k=>shiftMonthKey(k,-1))}>
+          <ChevronLeftIcon size={16}/>
+        </button>
+        <span style={{fontWeight:800, fontSize:'.92rem'}}>{formatMonthLabel(selectedMonthKey)}</span>
+        <button type="button" className="icon-btn" style={{background:'var(--app-surface)'}} aria-label="Next month"
+                disabled={isCurrentSelected} onClick={()=>setSelectedMonthKey(k=>shiftMonthKey(k,1))}>
+          <ChevronRightIcon size={16}/>
+        </button>
+      </div>
+
+      <div className="eyebrow" style={{marginBottom:'.6rem'}}>Summary</div>
+      <div className="card" style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.9rem'}}>
+        <div>
+          <div className="muted" style={{fontSize:'.74rem'}}>TOTAL EXPENSES</div>
+          <div className="tabular" style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.25rem', marginTop:'.15rem'}}>{PESO(totalExpenses)}</div>
+        </div>
+        <div>
+          <div className="muted" style={{fontSize:'.74rem'}}>USED FROM PROTECTED</div>
+          <div className="tabular" style={{fontWeight:800, fontSize:'1.1rem', marginTop:'.15rem', color:'var(--brand)'}}>{PESO(usedFromProtected)}</div>
+        </div>
+        {period && (
+          <>
+            <div>
+              <div className="muted" style={{fontSize:'.74rem'}}>PLANNED MONTHLY INCOME</div>
+              <div className="tabular" style={{fontWeight:800, fontSize:'1.1rem', marginTop:'.15rem'}}>{PESO(plannedIncome)}</div>
+            </div>
+            <div>
+              <div className="muted" style={{fontSize:'.74rem'}}>PLAN REMAINING</div>
+              <div className="tabular" style={{fontWeight:800, fontSize:'1.1rem', marginTop:'.15rem', color: isPlanOverspent ? 'var(--status-bad-text)' : 'var(--app-ink)'}}>
+                {isPlanOverspent ? `${PESO(Math.abs(planRemaining))} over` : PESO(planRemaining)}
+              </div>
+            </div>
+            <div className="muted" style={{fontSize:'.76rem', gridColumn:'1 / -1', marginTop:'.2rem', lineHeight:1.4}}>
+              Reflects the income amount set for this month, not individual income deposits.
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="row between" style={{marginTop:'1.4rem', marginBottom:'.6rem'}}>
+        <span className="section-title">Spending by Category</span>
+      </div>
+      <div className="card" style={{display:'grid', gap:'.8rem'}}>
+        {categoryRows.length===0 ? (
+          <div className="muted" style={{textAlign:'center', fontSize:'.85rem'}}>No expenses recorded for this month.</div>
+        ) : categoryRows.map(row => {
+          const pct = totalExpenses>0 ? Math.round(row.amount/totalExpenses*100) : 0;
+          return (
+            <div key={row.bucketId}>
+              <div className="row between">
+                <span style={{fontWeight:700, fontSize:'.88rem', display:'flex', alignItems:'center', gap:'.3rem'}}>
+                  {row.name}
+                  {row.isFallback && row.name!=='Unknown category' && <InfoIcon size={12} className="faint"/>}
+                </span>
+                <span className="tabular" style={{fontWeight:700, fontSize:'.85rem'}}>{PESO(row.amount)}</span>
+              </div>
+              <div className="progress-track" style={{marginTop:'.4rem'}}>
+                <div className="progress-fill" style={{width:pct+'%', background:'var(--brand)'}}/>
+              </div>
+              <div className="muted" style={{fontSize:'.78rem', marginTop:'.25rem'}}>{pct}% of month&rsquo;s spending</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {period ? (
+        <>
+          <div className="row between" style={{marginTop:'1.4rem', marginBottom:'.6rem'}}>
+            <span className="section-title">Monthly Plan</span>
+          </div>
+          <div className="card" style={{display:'grid', gap:'.9rem'}}>
+            {planRows.map(row => (
+              <div key={row.id}>
+                <div className="row between">
+                  <span style={{fontWeight:700, fontSize:'.88rem'}}>{row.name}</span>
+                  <span className="muted tabular" style={{fontSize:'.8rem'}}>{row.pct}% &middot; {PESO(row.allocation)}</span>
+                </div>
+                <div className="row between" style={{marginTop:'.3rem'}}>
+                  <span className="muted tabular" style={{fontSize:'.8rem'}}>{PESO(row.used)} used of {PESO(row.allocation)}</span>
+                  <span className="tabular" style={{fontWeight:700, fontSize:'.8rem', color: row.overBudget ? 'var(--status-bad-text)' : 'var(--app-ink-soft)'}}>
+                    {row.overBudget ? `${PESO(row.used-row.allocation)} over budget` : `${PESO(Math.max(0, row.allocation-row.used))} remaining`}
+                  </span>
+                </div>
+                <div className="progress-track" style={{marginTop:'.4rem'}}>
+                  <div className="progress-fill" style={{
+                    width:Math.min(100, row.allocation>0 ? Math.round(row.used/row.allocation*100) : 0)+'%',
+                    background: row.overBudget ? 'var(--status-bad-icon)' : 'var(--brand)',
+                  }}/>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="row between" style={{marginTop:'1.4rem', marginBottom:'.6rem'}}>
+            <span className="section-title">Protected Money</span>
+          </div>
+          <div className="card">
+            <div className="row between">
+              <span className="muted" style={{fontSize:'.84rem'}}>Protected Allocation</span>
+              <span className="tabular" style={{fontWeight:700, fontSize:'.85rem'}}>{PESO(protectedAllocation)}</span>
+            </div>
+            <div className="row between" style={{marginTop:'.5rem'}}>
+              <span className="muted" style={{fontSize:'.84rem'}}>Used From Protected</span>
+              <span className="tabular" style={{fontWeight:700, fontSize:'.85rem'}}>{PESO(usedFromProtected)}</span>
+            </div>
+            <div className="row between" style={{marginTop:'.5rem', paddingTop:'.6rem', borderTop:'1px solid var(--app-border)'}}>
+              <span style={{fontWeight:800, fontSize:'.88rem'}}>Protected Remaining</span>
+              <span className="tabular" style={{fontWeight:800, fontSize:'.88rem', color:'var(--brand)'}}>{PESO(protectedRemaining)}</span>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="card" style={{marginTop:'1.4rem', display:'flex', gap:'.7rem'}}>
+          <div className="icon-btn" style={{background:'var(--app-surface-2)', color:'var(--app-ink-soft)', border:'none', width:34, height:34, flexShrink:0}}>
+            <InfoIcon size={17}/>
+          </div>
+          <div className="muted" style={{fontSize:'.83rem', lineHeight:1.4}}>
+            No monthly plan snapshot is available for this month. Spending history is still shown from your transactions.
+          </div>
+        </div>
+      )}
+
+      <div className="row between" style={{marginTop:'1.4rem', marginBottom:'.6rem'}}>
+        <span className="section-title">Transactions</span>
+      </div>
+      <div className="card" style={{padding:'1.2rem 1.15rem'}}>
+        {monthTxns.length===0 ? (
+          <div className="muted" style={{textAlign:'center', fontSize:'.85rem'}}>No expenses recorded for this month.</div>
+        ) : monthTxns.map((t,i) => {
+          const cat = resolveReportCategory(t, buckets);
+          return (
+            <div key={t.id} className="row between" style={{
+              alignItems:'flex-start', marginTop: i?'.75rem':'0', paddingTop: i?'.75rem':'0',
+              borderTop: i?'1px solid var(--app-border)':'none',
+            }}>
+              <div className="row" style={{gap:'.65rem'}}>
+                <div className="icon-btn" style={{width:36, height:36, border:'none', background:'var(--app-surface-2)', color:'var(--app-ink-soft)'}}>
+                  <ArrowDownCircleIcon size={17}/>
+                </div>
+                <div>
+                  <div style={{fontWeight:700, fontSize:'.9rem'}}>{t.note || cat.name}</div>
+                  <div className="muted" style={{fontSize:'.78rem', marginTop:'.1rem'}}>{cat.name} &middot; {formatTxnDate(t.date)}</div>
+                </div>
+              </div>
+              <span className="tabular" style={{fontWeight:800, fontSize:'.9rem', flexShrink:0}}>&minus;{PESO(t.amount)}</span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -3309,8 +3597,11 @@ function App(){
     plan: <PlanPage buckets={buckets} setBuckets={setBuckets} income={income}/>,
     transactions: <TransactionsPage income={income} setIncome={setIncome} buckets={buckets} setBuckets={setBuckets} transactions={transactions} setTransactions={setTransactions}/>,
     goals: <GoalsPage goals={goals} setGoals={setGoals} buckets={buckets}/>,
-    insights: <InsightsPage income={income} buckets={buckets}/>,
+    insights: <InsightsPage navigate={navigate} income={income} buckets={buckets}/>,
     settings: <SettingsPage navigate={navigate} income={income} setIncome={setIncome} buckets={buckets}/>,
+    // Reports V1: read-only — intentionally receives no setters (no setIncome/setBuckets/setGoals/
+    // setTransactions/setPeriods), so this route can never mutate financial data or period history.
+    reports: <ReportsPage navigate={navigate} buckets={buckets} transactions={transactions} periods={periods}/>,
   };
   return (
     <>
