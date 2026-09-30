@@ -429,14 +429,21 @@ function paceLocalDateStr(d = new Date()){
   return `${y}-${m}-${day}`;
 }
 
-// Phase B1 foundation: local calendar 'YYYY-MM' month key — same local-getter approach as
-// paceLocalDateStr (never toISOString()), just without the day segment. Not yet wired into any
-// financial behavior; an existing transaction's month can already be read via date.slice(0,7)
-// since transaction dates are already local 'YYYY-MM-DD' strings.
+// Local calendar 'YYYY-MM' month key — same local-getter approach as paceLocalDateStr (never
+// toISOString()), just without the day segment. An existing transaction's month is read via
+// date.slice(0,7) directly, since transaction dates are already local 'YYYY-MM-DD' strings —
+// no separate monthKey is ever stored on a transaction.
 function localMonthKey(d = new Date()){
   const y = d.getFullYear();
   const m = String(d.getMonth()+1).padStart(2,'0');
   return `${y}-${m}`;
+}
+
+// Phase B3a2: true when a transaction's own 'YYYY-MM-DD' date falls in the CURRENT local
+// calendar month, as of the moment this is called. `date` is always already-hydrated/validated
+// (TXN_DATE_RE) before this is used in a mutation handler, so no format re-validation here.
+function isCurrentMonthDate(date){
+  return date.slice(0,7) === localMonthKey(new Date());
 }
 
 // Strictly parses 'YYYY-MM-DD' into a LOCAL-midnight Date, rejecting anything malformed or
@@ -565,6 +572,21 @@ function hydrateTransaction(raw){
   return { id:raw.id, type:'income', amount:amountNum, source, date:raw.date };
 }
 
+// Phase B3a2: pure current-month expense-usage reconstruction — sums hydrated/deduped expense
+// transactions by bucketId for the given todayKey. Never mutates transactions, never touches
+// Date directly (todayKey is always supplied by the caller), and deliberately does not filter by
+// live bucket existence — a bucketId with no corresponding live bucket simply produces an entry
+// nothing ever reads (the caller only looks up ids that exist in the live buckets array).
+function deriveCurrentMonthUsedByBucket(transactions, todayKey){
+  const usedByBucket = {};
+  for(const t of transactions){
+    if(t.type!=='expense') continue;
+    if(t.date.slice(0,7)!==todayKey) continue;
+    usedByBucket[t.bucketId] = (usedByBucket[t.bucketId]||0) + t.amount;
+  }
+  return usedByBucket;
+}
+
 // Keeps the FIRST valid occurrence of each id, drops later duplicates, preserves original order.
 // Never merges/sums duplicate records and never invents a replacement id — an ambiguous later
 // entry is simply dropped. Applied only during hydration, never touches the live edit/delete
@@ -688,9 +710,19 @@ function loadPersistedState(){
   // individually so one malformed period can never take down the rest of a user's data.
   const periods = isV2 ? hydratePeriods(parsed.periods) : {};
 
+  // Phase B3a2: bucket.used now means CURRENT-MONTH expense usage — reconstructed fresh from the
+  // already-hydrated/deduped `transactions` above (never raw parsed.transactions) every time the
+  // app loads, rather than trusting whatever `used` value happened to be persisted. This is the
+  // sole recovery mechanism for both legacy pre-B3a2 data and a crash mid-session: it is pure and
+  // idempotent, so a stale/zero/wrong persisted `used` can never win over what the current
+  // month's actual transactions say. No rollover marker of any kind is needed as a result.
+  const finalBuckets = buckets.length ? buckets : initialBuckets();
+  const usedByBucket = deriveCurrentMonthUsedByBucket(transactions, localMonthKey(new Date()));
+  const liveBuckets = finalBuckets.map(b => ({ ...b, used: usedByBucket[b.id] || 0 }));
+
   return {
     income,
-    buckets: buckets.length ? buckets : initialBuckets(),
+    buckets: liveBuckets,
     goals, transactions, periods, persistenceOK:true,
   };
 }
@@ -1767,7 +1799,11 @@ function TransactionsPage({income, setIncome, buckets, setBuckets, transactions,
     e.preventDefault();
     if(tab==='expense'){
       if(!selectedCat || expenseNum<=0) return; // reject zero/invalid amounts, or no selected bucket
-      setBuckets(bs=>bs.map(b=> b.id===category ? {...b, used: b.used + expenseNum} : b));
+      // bucket.used is CURRENT-MONTH usage only (Phase B3a2) — a backdated/historical expense is
+      // still a fully valid transaction (never rejected), it simply must not inflate live usage.
+      if(isCurrentMonthDate(date)){
+        setBuckets(bs=>bs.map(b=> b.id===category ? {...b, used: b.used + expenseNum} : b));
+      }
       setTransactions(prev=>[{
         id:'txn-'+Date.now(), type:'expense', amount:expenseNum, bucketId:category, note:note.trim(), date,
         // Frozen category identity for future historical Reports only — captured from the
@@ -3181,21 +3217,35 @@ function App(){
     const bucketChanged = newBucketId !== oldBucketId;
     const newBucket = bucketChanged ? buckets.find(b=>b.id===newBucketId) : null;
 
-    setBuckets(bs => bs.map(b => {
-      if(b.id===oldBucketId && b.id===newBucketId){
-        // same bucket — apply the net delta once, never subtract-then-add as two separate updates
-        return {...b, used: Math.max(0, b.used - oldAmount + newAmount)};
-      }
-      if(b.id===oldBucketId){
-        // reverse the old effect (if the old bucket no longer exists, this simply matches nothing —
-        // nothing to subtract from, which is exactly correct, not an error)
-        return {...b, used: Math.max(0, b.used - oldAmount)};
-      }
-      if(b.id===newBucketId){
-        return {...b, used: b.used + newAmount};
-      }
-      return b;
-    }));
+    // Phase B3a2: bucket.used is CURRENT-MONTH usage only — the OLD amount is reversed only if
+    // the transaction's OLD date was current-month, and the NEW amount is applied only if its NEW
+    // date is current-month, independently of each other and independently of whether the bucket
+    // also changed (see the B3a2 six-case matrix: current<->current, current<->historical,
+    // historical<->historical). The same-bucket-both-current case keeps the original single-clamp
+    // net delta rather than two separately-clamped steps, since clamping an intermediate step can
+    // silently discard a shortfall the net delta alone would not (e.g. used=100, old=150, new=20:
+    // Math.max(0,100-150+20)=0, but Math.max(0,100-150)=0 then +20=20 — a different, wrong result).
+    const oldIsCurrent = isCurrentMonthDate(oldTxn.date);
+    const newIsCurrent = isCurrentMonthDate(changes.date);
+    const sameBucketBothCurrent = !bucketChanged && oldIsCurrent && newIsCurrent;
+
+    if(oldIsCurrent || newIsCurrent){
+      setBuckets(bs => bs.map(b => {
+        if(sameBucketBothCurrent && b.id===oldBucketId){
+          return {...b, used: Math.max(0, b.used - oldAmount + newAmount)};
+        }
+        let next = b;
+        if(!sameBucketBothCurrent && b.id===oldBucketId && oldIsCurrent){
+          // reverse the old effect (if the old bucket no longer exists, this simply matches
+          // nothing — nothing to subtract from, which is exactly correct, not an error)
+          next = {...next, used: Math.max(0, next.used - oldAmount)};
+        }
+        if(!sameBucketBothCurrent && b.id===newBucketId && newIsCurrent){
+          next = {...next, used: next.used + newAmount};
+        }
+        return next;
+      }));
+    }
 
     setTransactions(ts => ts.map(t => t.id===id
       ? {
@@ -3209,10 +3259,14 @@ function App(){
   // Deletes an existing EXPENSE transaction: reverses its bucket effect using the transaction's
   // OWN stored amount/bucketId (never trusting form state), then removes the record. If the bucket
   // no longer exists, there's simply nothing to reverse — the transaction is still safely removed.
+  // Phase B3a2: the reversal only ever applies to live bucket.used if the deleted transaction's
+  // OWN date was current-month — deleting a historical expense removes the record only.
   function deleteExpenseTransaction(id){
     const txn = transactions.find(t=>t.id===id);
     if(!txn || txn.type!=='expense') return;
-    setBuckets(bs => bs.map(b => b.id===txn.bucketId ? {...b, used: Math.max(0, b.used - txn.amount)} : b));
+    if(isCurrentMonthDate(txn.date)){
+      setBuckets(bs => bs.map(b => b.id===txn.bucketId ? {...b, used: Math.max(0, b.used - txn.amount)} : b));
+    }
     setTransactions(ts => ts.filter(t => t.id!==id));
   }
 
