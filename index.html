@@ -429,6 +429,16 @@ function paceLocalDateStr(d = new Date()){
   return `${y}-${m}-${day}`;
 }
 
+// Phase B1 foundation: local calendar 'YYYY-MM' month key — same local-getter approach as
+// paceLocalDateStr (never toISOString()), just without the day segment. Not yet wired into any
+// financial behavior; an existing transaction's month can already be read via date.slice(0,7)
+// since transaction dates are already local 'YYYY-MM-DD' strings.
+function localMonthKey(d = new Date()){
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  return `${y}-${m}`;
+}
+
 // Strictly parses 'YYYY-MM-DD' into a LOCAL-midnight Date, rejecting anything malformed or
 // calendar-impossible (e.g. '2026-02-30') instead of letting the Date constructor silently
 // roll it over to a different date. Returns null on any invalid input.
@@ -493,6 +503,7 @@ const iconKeyFor = (Icon) => ICON_KEY_BY_COMPONENT.get(Icon) || null;
 
 const STORAGE_KEY = 'fundora_data_v1';
 const isFiniteNumber = (n) => typeof n === 'number' && Number.isFinite(n);
+const isPlainObject = (v) => v!==null && typeof v==='object' && !Array.isArray(v);
 const TXN_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Lenient, per-field coercion — drops only what genuinely can't be recovered (id, financial
@@ -563,8 +574,14 @@ function dedupeById(items){
 // persistenceOK:false so the caller can suspend further writes rather than silently clobbering
 // corrupted, foreign, or inaccessible storage. A clean "no key yet" result is NOT a failure —
 // persistence stays enabled so the very first save can happen normally.
+//
+// Phase B1: supports both version 1 (pre-periods) and version 2 (adds a `periods` container).
+// A v1 blob is hydrated exactly as before and migrated in memory with periods:{} — no previous
+// month is ever fabricated. A v2 blob's own periods value must already be a plain object; its
+// contents are carried through completely untouched (B1 never writes real data into it). Any
+// other version is treated exactly like a corrupted/unsupported blob — never silently guessed.
 function loadPersistedState(){
-  const defaults = () => ({ income:0, buckets:initialBuckets(), goals:initialGoals(), transactions:[], persistenceOK:true });
+  const defaults = () => ({ income:0, buckets:initialBuckets(), goals:initialGoals(), transactions:[], periods:{}, persistenceOK:true });
 
   let raw;
   try { raw = localStorage.getItem(STORAGE_KEY); } catch(e) { return { ...defaults(), persistenceOK:false }; }
@@ -573,31 +590,36 @@ function loadPersistedState(){
   let parsed;
   try { parsed = JSON.parse(raw); } catch(e) { return { ...defaults(), persistenceOK:false }; }
 
-  const structurallyValid = parsed && typeof parsed==='object' && parsed.version===1
+  const hasCoreArrays = parsed && typeof parsed==='object'
     && Array.isArray(parsed.buckets) && Array.isArray(parsed.goals) && Array.isArray(parsed.transactions);
-  if(!structurallyValid) return { ...defaults(), persistenceOK:false };
+  const isV1 = hasCoreArrays && parsed.version===1;
+  const isV2 = hasCoreArrays && parsed.version===2 && isPlainObject(parsed.periods);
+  if(!isV1 && !isV2) return { ...defaults(), persistenceOK:false };
 
   const incomeNum = Number(parsed.income);
   const income = (isFiniteNumber(incomeNum) && incomeNum>=0) ? incomeNum : 0;
   const buckets = dedupeById(parsed.buckets.map(hydrateBucket).filter(Boolean));
   const goals = dedupeById(parsed.goals.map(hydrateGoal).filter(Boolean));
   const transactions = dedupeById(parsed.transactions.map(hydrateTransaction).filter(Boolean));
+  const periods = isV2 ? parsed.periods : {};
 
   return {
     income,
     buckets: buckets.length ? buckets : initialBuckets(),
-    goals, transactions, persistenceOK:true,
+    goals, transactions, periods, persistenceOK:true,
   };
 }
 
 // Single centralized write path — the only place localStorage is ever touched. No financial
 // mutation handler anywhere writes to storage directly; App's one effect calls this whenever
-// income/buckets/goals/transactions change. Returns true on a successful write, false on any
-// serialization or storage failure, so the caller can latch persistence off for the session.
-function saveState({income, buckets, goals, transactions}){
+// income/buckets/goals/transactions/periods change. Returns true on a successful write, false on
+// any serialization or storage failure, so the caller can latch persistence off for the session.
+// Phase B1: writes schema version 2, which adds `periods` alongside the unchanged current-state
+// fields — periods is passed through as-is, never populated or shaped by this function.
+function saveState({income, buckets, goals, transactions, periods}){
   try {
     const payload = {
-      version: 1,
+      version: 2,
       income,
       buckets: buckets.map(b => ({
         id:b.id, name:b.name, pct:b.pct, used:b.used, kind:b.kind, color:b.color,
@@ -608,6 +630,7 @@ function saveState({income, buckets, goals, transactions}){
         iconKey:iconKeyFor(g.Icon), targetDate:g.targetDate, priority:g.priority,
       })),
       transactions,
+      periods,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     return true;
@@ -3005,6 +3028,11 @@ function App(){
   // Activity log — a record of successful Income/Expense actions, NOT a source of truth for
   // current balances. Home/Plan/Insights continue to derive everything from income/buckets.
   const [transactions, setTransactions] = useState(() => persisted.transactions);
+  // Phase B1 foundation only — an inert container for future historical monthly snapshots.
+  // Nothing in this app writes into it yet; no component receives it; no financial handler
+  // reads it. It exists purely so the persisted schema and its migration path are proven safe
+  // before any later phase starts putting real period data inside.
+  const [periods, setPeriods] = useState(() => persisted.periods);
 
   // Single centralized persistence write path — the only place localStorage is touched from a
   // React effect. No mutation handler anywhere (Plan, Add Transaction, Settings, etc.) contains
@@ -3013,9 +3041,9 @@ function App(){
   // no new React state/context/timer), mirroring how a failed read is already handled.
   useEffect(() => {
     if(!persistenceEnabledRef.current) return;
-    const ok = saveState({income, buckets, goals, transactions});
+    const ok = saveState({income, buckets, goals, transactions, periods});
     if(!ok) persistenceEnabledRef.current = false;
-  }, [income, buckets, goals, transactions]);
+  }, [income, buckets, goals, transactions, periods]);
 
   // Corrects an existing EXPENSE transaction: reverses the OLD bucket effect and applies the NEW
   // one in a single setBuckets pass, using the transaction's OWN stored old values (never trusting
