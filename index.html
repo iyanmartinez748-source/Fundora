@@ -548,7 +548,18 @@ function hydrateTransaction(raw){
   if(raw.type==='expense'){
     if(typeof raw.bucketId!=='string' || raw.bucketId==='') return null;
     const note = typeof raw.note==='string' ? raw.note : '';
-    return { id:raw.id, type:'expense', amount:amountNum, bucketId:raw.bucketId, note, date:raw.date };
+    const base = { id:raw.id, type:'expense', amount:amountNum, bucketId:raw.bucketId, note, date:raw.date };
+    // Optional, forward-looking category identity for future historical Reports only — never
+    // required, never fabricated. Malformed or missing values are simply omitted (not defaulted,
+    // and specifically never defaulted to 'spend' — absence is safer than inventing history) so
+    // an otherwise-valid transaction is never dropped over bad snapshot metadata.
+    const nameSnapshot = typeof raw.bucketNameSnapshot==='string' ? raw.bucketNameSnapshot.trim() : '';
+    const kindSnapshot = (raw.bucketKindSnapshot==='spend' || raw.bucketKindSnapshot==='protect') ? raw.bucketKindSnapshot : null;
+    return {
+      ...base,
+      ...(nameSnapshot ? { bucketNameSnapshot: nameSnapshot } : {}),
+      ...(kindSnapshot ? { bucketKindSnapshot: kindSnapshot } : {}),
+    };
   }
   const source = typeof raw.source==='string' ? raw.source : '';
   return { id:raw.id, type:'income', amount:amountNum, source, date:raw.date };
@@ -1685,6 +1696,10 @@ function TransactionsPage({income, setIncome, buckets, setBuckets, transactions,
       setBuckets(bs=>bs.map(b=> b.id===category ? {...b, used: b.used + expenseNum} : b));
       setTransactions(prev=>[{
         id:'txn-'+Date.now(), type:'expense', amount:expenseNum, bucketId:category, note:note.trim(), date,
+        // Frozen category identity for future historical Reports only — captured from the
+        // already-resolved, already-validated live bucket, never from arbitrary input. Never
+        // read by the current Activity Log, which continues to resolve bucketId live.
+        bucketNameSnapshot: selectedCat.name, bucketKindSnapshot: selectedCat.kind,
       }, ...prev]);
       setExpenseAmount('');
       setNote('');
@@ -3058,6 +3073,13 @@ function App(){
     if(!changes.date) return;                                      // date must be present
     const oldAmount = oldTxn.amount;
     const oldBucketId = oldTxn.bucketId;
+    // Category identity snapshot only refreshes when the bucket actually changes — an amount/
+    // note/date-only edit must never touch it (preserved automatically by the spread below, or
+    // stays absent for an old pre-B2 transaction — never opportunistically backfilled, since we
+    // can't know whether today's live name matches what was true when it was first created).
+    // The new bucket is already confirmed to exist via the buckets.some(...) guard above.
+    const bucketChanged = newBucketId !== oldBucketId;
+    const newBucket = bucketChanged ? buckets.find(b=>b.id===newBucketId) : null;
 
     setBuckets(bs => bs.map(b => {
       if(b.id===oldBucketId && b.id===newBucketId){
@@ -3076,7 +3098,10 @@ function App(){
     }));
 
     setTransactions(ts => ts.map(t => t.id===id
-      ? {...t, amount:newAmount, bucketId:newBucketId, note:(changes.note||'').trim(), date:changes.date}
+      ? {
+          ...t, amount:newAmount, bucketId:newBucketId, note:(changes.note||'').trim(), date:changes.date,
+          ...(bucketChanged ? { bucketNameSnapshot:newBucket.name, bucketKindSnapshot:newBucket.kind } : {}),
+        }
       : t
     ));
   }
