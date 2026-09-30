@@ -543,16 +543,31 @@ function hydrateTransaction(raw){
   return { id:raw.id, type:'income', amount:amountNum, source, date:raw.date };
 }
 
+// Keeps the FIRST valid occurrence of each id, drops later duplicates, preserves original order.
+// Never merges/sums duplicate records and never invents a replacement id — an ambiguous later
+// entry is simply dropped. Applied only during hydration, never touches the live edit/delete
+// handlers (which continue to identify records by id exactly as before).
+function dedupeById(items){
+  const seen = new Set();
+  return items.filter(item => {
+    if(seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+}
+
 // Reads and validates the single persisted blob exactly once, synchronously — App feeds this
 // straight into its useState lazy initializers so the first render already reflects either
 // hydrated data or safe defaults (no default-then-overwrite race). Never throws: any structural
-// (Tier 1) failure — missing key aside — returns persistenceOK:false so the caller can suspend
-// further writes rather than silently clobbering corrupted or foreign data.
+// (Tier 1) failure — including the read itself throwing, and missing key aside — returns
+// persistenceOK:false so the caller can suspend further writes rather than silently clobbering
+// corrupted, foreign, or inaccessible storage. A clean "no key yet" result is NOT a failure —
+// persistence stays enabled so the very first save can happen normally.
 function loadPersistedState(){
   const defaults = () => ({ income:0, buckets:initialBuckets(), goals:initialGoals(), transactions:[], persistenceOK:true });
 
   let raw;
-  try { raw = localStorage.getItem(STORAGE_KEY); } catch(e) { return defaults(); }
+  try { raw = localStorage.getItem(STORAGE_KEY); } catch(e) { return { ...defaults(), persistenceOK:false }; }
   if(raw===null) return defaults();
 
   let parsed;
@@ -564,9 +579,9 @@ function loadPersistedState(){
 
   const incomeNum = Number(parsed.income);
   const income = (isFiniteNumber(incomeNum) && incomeNum>=0) ? incomeNum : 0;
-  const buckets = parsed.buckets.map(hydrateBucket).filter(Boolean);
-  const goals = parsed.goals.map(hydrateGoal).filter(Boolean);
-  const transactions = parsed.transactions.map(hydrateTransaction).filter(Boolean);
+  const buckets = dedupeById(parsed.buckets.map(hydrateBucket).filter(Boolean));
+  const goals = dedupeById(parsed.goals.map(hydrateGoal).filter(Boolean));
+  const transactions = dedupeById(parsed.transactions.map(hydrateTransaction).filter(Boolean));
 
   return {
     income,
@@ -577,7 +592,8 @@ function loadPersistedState(){
 
 // Single centralized write path — the only place localStorage is ever touched. No financial
 // mutation handler anywhere writes to storage directly; App's one effect calls this whenever
-// income/buckets/goals/transactions change.
+// income/buckets/goals/transactions change. Returns true on a successful write, false on any
+// serialization or storage failure, so the caller can latch persistence off for the session.
 function saveState({income, buckets, goals, transactions}){
   try {
     const payload = {
@@ -594,8 +610,10 @@ function saveState({income, buckets, goals, transactions}){
       transactions,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    return true;
   } catch(e) {
     // Quota exceeded, private-browsing restrictions, etc. — app keeps working in memory.
+    return false;
   }
 }
 
@@ -2991,9 +3009,12 @@ function App(){
   // Single centralized persistence write path — the only place localStorage is touched from a
   // React effect. No mutation handler anywhere (Plan, Add Transaction, Settings, etc.) contains
   // any localStorage logic; they only ever call the setters above, exactly as before Phase A1.
+  // Phase A2: a failed write latches persistence off for the rest of the session (a plain ref,
+  // no new React state/context/timer), mirroring how a failed read is already handled.
   useEffect(() => {
     if(!persistenceEnabledRef.current) return;
-    saveState({income, buckets, goals, transactions});
+    const ok = saveState({income, buckets, goals, transactions});
+    if(!ok) persistenceEnabledRef.current = false;
   }, [income, buckets, goals, transactions]);
 
   // Corrects an existing EXPENSE transaction: reverses the OLD bucket effect and applies the NEW
