@@ -1831,7 +1831,7 @@ function TransactionsPage({income, setIncome, buckets, setBuckets, transactions,
   const [expenseAmount, setExpenseAmount] = useState('');
   const [note, setNote] = useState('');
   const [category, setCategory] = useState('living');
-  const [date, setDate] = useState(()=> new Date().toISOString().slice(0,10));
+  const [date, setDate] = useState(()=> paceLocalDateStr(new Date()));
 
   const [incomeAmount, setIncomeAmount] = useState('');
   const [incomeSource, setIncomeSource] = useState('salary');
