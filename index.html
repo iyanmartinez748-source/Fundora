@@ -352,7 +352,6 @@ const HelpIcon=p=><Icon {...p}><circle cx="12" cy="12" r="9"/><path d="M9.2 9.3a
 
 /* ============================== mock data ============================== */
 const PESO = n => '₱' + n.toLocaleString('en-PH');
-const CURRENT_MONTH = 'September 2026';
 
 // Suggested starting allocation template — a brand-new user has no income or spending/saving
 // activity yet, so every bucket's `used` starts at 0. Bucket peso `amount` is NEVER stored as
@@ -1102,7 +1101,7 @@ function HomePage({navigate, income, buckets, transactions, editExpenseTransacti
       <div className="tabular" style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'2.2rem', lineHeight:1.1, marginTop:'.15rem'}}>
         {PESO(income)}
       </div>
-      <div className="muted" style={{fontSize:'.85rem', marginTop:'.25rem', fontWeight:600}}>{CURRENT_MONTH}</div>
+      <div className="muted" style={{fontSize:'.85rem', marginTop:'.25rem', fontWeight:600}}>{formatMonthLabel(localMonthKey(new Date()))}</div>
 
       <div className="card" style={{marginTop:'1.3rem', padding:'1.4rem 1.2rem'}}>
         <div style={{display:'flex', justifyContent:'center', position:'relative'}}>
@@ -2461,13 +2460,7 @@ function GoalsPage({goals, setGoals, buckets}){
   );
 }
 
-const INSIGHTS_MONTHS = ['July 2026','August 2026','September 2026','October 2026','November 2026'];
-
 function InsightsPage({navigate, income, buckets}){
-  const [monthIndex, setMonthIndex] = useState(INSIGHTS_MONTHS.indexOf(CURRENT_MONTH));
-  const selectedMonth = INSIGHTS_MONTHS[monthIndex];
-  const isPopulated = selectedMonth === CURRENT_MONTH;
-
   const {liveBuckets, allSpent, deficit, protectedRemainingTotal, effectiveProtectedRemaining, availableToSpend} = deriveFinancialSummary(buckets, income);
   const bucketLookup = Object.fromEntries(liveBuckets.map(b=>[b.id,b]));
   const isOverspent = deficit > 0;
@@ -2529,28 +2522,7 @@ function InsightsPage({navigate, income, buckets}){
         <ChevronRightIcon size={18} className="faint"/>
       </button>
 
-      <div className="row between" style={{background:'var(--app-surface-2)', borderRadius:'var(--r-pill)', padding:'.4rem .5rem'}}>
-        <button type="button" className="icon-btn" style={{background:'var(--app-surface)'}} aria-label="Previous month"
-                disabled={monthIndex===0} onClick={()=>setMonthIndex(i=>Math.max(0,i-1))}>
-          <ChevronLeftIcon size={16}/>
-        </button>
-        <span style={{fontWeight:800, fontSize:'.92rem'}}>{selectedMonth}</span>
-        <button type="button" className="icon-btn" style={{background:'var(--app-surface)'}} aria-label="Next month"
-                disabled={monthIndex===INSIGHTS_MONTHS.length-1} onClick={()=>setMonthIndex(i=>Math.min(INSIGHTS_MONTHS.length-1,i+1))}>
-          <ChevronRightIcon size={16}/>
-        </button>
-      </div>
-
-      {!isPopulated ? (
-        <div className="card" style={{marginTop:'1.1rem', textAlign:'center', padding:'2rem 1.2rem'}}>
-          <div className="icon-btn brand" style={{margin:'0 auto .8rem'}}><CalendarIcon size={17}/></div>
-          <div style={{fontWeight:800, fontSize:'.95rem'}}>No data yet for {selectedMonth}</div>
-          <div className="muted" style={{fontSize:'.83rem', marginTop:'.35rem', lineHeight:1.4}}>
-            This prototype only has mock activity for {CURRENT_MONTH}.
-          </div>
-        </div>
-      ) : (
-        <>
+      <>
           <div className="eyebrow" style={{marginTop:'1.1rem', marginBottom:'.6rem'}}>Monthly Overview</div>
           <div className="card">
             <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.9rem'}}>
@@ -2782,8 +2754,7 @@ function InsightsPage({navigate, income, buckets}){
               </div>
             )}
           </div>
-        </>
-      )}
+      </>
     </div>
   );
 }
