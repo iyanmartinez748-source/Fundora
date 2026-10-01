@@ -327,7 +327,11 @@
     .home-status-amount{font-size:1.8rem;}
     .donut-home{width:140px; height:140px;}
 
-    .bottom-nav{padding:.45rem .5rem calc(.5rem + env(safe-area-inset-bottom,0px));}
+    .bottom-nav{
+      padding:.45rem .5rem calc(.5rem + env(safe-area-inset-bottom,0px));
+      position:relative; z-index:5;
+    }
+    .nav-fab{margin-top:-18px;}
   }
 </style>
 
