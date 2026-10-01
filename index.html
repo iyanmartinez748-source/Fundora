@@ -2791,6 +2791,10 @@ function InsightsPage({navigate, income, buckets}){
 // month as for any historical month (transactions filtered by month + periods[monthKey]) — it
 // never reads bucket.used, which is current-month-only as of Phase B3a2.
 function ReportsPage({navigate, buckets, transactions, periods}){
+  // Mode is local UI state only — never persisted, never a second route. Monthly mode's own
+  // state/calculations below are completely unchanged from Monthly Reports V1.
+  const [reportMode, setReportMode] = useState('monthly');
+
   const todayKey = localMonthKey(new Date());
   const [selectedMonthKey, setSelectedMonthKey] = useState(todayKey);
   const isCurrentSelected = selectedMonthKey === todayKey;
@@ -2818,6 +2822,37 @@ function ReportsPage({navigate, buckets, transactions, periods}){
   const protectedAllocation = protectedPlanRows.reduce((s,r)=>s+r.allocation, 0);
   const protectedRemaining = protectedPlanRows.reduce((s,r)=>s+Math.max(0, r.allocation-r.used), 0);
 
+  // ---- Yearly mode: reuses the SAME transaction-derived helpers as Monthly, just filtered by
+  // year instead of month. No second financial engine, no cached/persisted totals. ----
+  const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
+  const isCurrentYearSelected = selectedYear === new Date().getFullYear();
+
+  const yearTxns = transactions.filter(t => t.type==='expense' && t.date.slice(0,4)===String(selectedYear));
+  const yearTotalExpenses = yearTxns.reduce((s,t)=>s+t.amount, 0);
+  const yearUsedFromProtected = sumProtectedExpenseUsage(yearTxns, buckets);
+  const yearCategoryRows = groupMonthlyExpensesByCategory(yearTxns, buckets);
+
+  // A future month of the CURRENT year hasn't happened yet — it is shown as "—", never as a
+  // fabricated ₱0, which would falsely claim the month already occurred with no spending.
+  const currentMonthIndex = new Date().getMonth();
+  const monthlyBreakdown = Array.from({length:12}, (_, m) => {
+    const label = new Date(selectedYear, m, 1).toLocaleDateString('en-US', {month:'short'});
+    const isFuture = isCurrentYearSelected && m > currentMonthIndex;
+    if(isFuture) return { monthIndex:m, label, amount:null };
+    const monthKey = `${selectedYear}-${String(m+1).padStart(2,'0')}`;
+    const amount = getMonthlyExpenseTransactions(transactions, monthKey).reduce((s,t)=>s+t.amount, 0);
+    return { monthIndex:m, label, amount };
+  });
+  const maxMonthly = Math.max(0, ...monthlyBreakdown.map(r => r.amount || 0));
+
+  // Never claims a full-year income total — only sums `periods` entries that genuinely exist for
+  // this year, and reports exactly how many of the 12 months that is. A missing month is never
+  // treated as ₱0 planned income (that would understate a real, just-unrecorded month).
+  const yearPrefix = String(selectedYear) + '-';
+  const yearPeriodEntries = Object.values(periods).filter(p => p.monthKey.startsWith(yearPrefix));
+  const recordedPlannedIncome = yearPeriodEntries.reduce((s,p)=>s+p.incomeSnapshot, 0);
+  const recordedMonthCount = yearPeriodEntries.length;
+
   return (
     <div className="app-scroll">
       <div className="row" style={{gap:'.6rem', alignItems:'center', marginBottom:'1.1rem'}}>
@@ -2825,162 +2860,280 @@ function ReportsPage({navigate, buckets, transactions, periods}){
           <ChevronLeftIcon size={18}/>
         </button>
         <div>
-          <div style={{fontWeight:800, fontSize:'1.2rem'}}>Monthly Report</div>
-          <div className="muted" style={{fontSize:'.83rem', marginTop:'.1rem'}}>Spending and plan history, one month at a time.</div>
-        </div>
-      </div>
-
-      <div className="row between" style={{background:'var(--app-surface-2)', borderRadius:'var(--r-pill)', padding:'.4rem .5rem', marginBottom:'1.1rem'}}>
-        <button type="button" className="icon-btn" style={{background:'var(--app-surface)'}} aria-label="Previous month"
-                onClick={()=>setSelectedMonthKey(k=>shiftMonthKey(k,-1))}>
-          <ChevronLeftIcon size={16}/>
-        </button>
-        <span style={{fontWeight:800, fontSize:'.92rem'}}>{formatMonthLabel(selectedMonthKey)}</span>
-        <button type="button" className="icon-btn" style={{background:'var(--app-surface)'}} aria-label="Next month"
-                disabled={isCurrentSelected} onClick={()=>setSelectedMonthKey(k=>shiftMonthKey(k,1))}>
-          <ChevronRightIcon size={16}/>
-        </button>
-      </div>
-
-      <div className="eyebrow" style={{marginBottom:'.6rem'}}>Summary</div>
-      <div className="card" style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.9rem'}}>
-        <div>
-          <div className="muted" style={{fontSize:'.74rem'}}>TOTAL EXPENSES</div>
-          <div className="tabular" style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.25rem', marginTop:'.15rem'}}>{PESO(totalExpenses)}</div>
-        </div>
-        <div>
-          <div className="muted" style={{fontSize:'.74rem'}}>USED FROM PROTECTED</div>
-          <div className="tabular" style={{fontWeight:800, fontSize:'1.1rem', marginTop:'.15rem', color:'var(--brand)'}}>{PESO(usedFromProtected)}</div>
-        </div>
-        {period && (
-          <>
-            <div>
-              <div className="muted" style={{fontSize:'.74rem'}}>PLANNED MONTHLY INCOME</div>
-              <div className="tabular" style={{fontWeight:800, fontSize:'1.1rem', marginTop:'.15rem'}}>{PESO(plannedIncome)}</div>
-            </div>
-            <div>
-              <div className="muted" style={{fontSize:'.74rem'}}>PLAN REMAINING</div>
-              <div className="tabular" style={{fontWeight:800, fontSize:'1.1rem', marginTop:'.15rem', color: isPlanOverspent ? 'var(--status-bad-text)' : 'var(--app-ink)'}}>
-                {isPlanOverspent ? `${PESO(Math.abs(planRemaining))} over` : PESO(planRemaining)}
-              </div>
-            </div>
-            <div className="muted" style={{fontSize:'.76rem', gridColumn:'1 / -1', marginTop:'.2rem', lineHeight:1.4}}>
-              Reflects the income amount set for this month, not individual income deposits.
-            </div>
-          </>
-        )}
-      </div>
-
-      <div className="row between" style={{marginTop:'1.4rem', marginBottom:'.6rem'}}>
-        <span className="section-title">Spending by Category</span>
-      </div>
-      <div className="card" style={{display:'grid', gap:'.8rem'}}>
-        {categoryRows.length===0 ? (
-          <div className="muted" style={{textAlign:'center', fontSize:'.85rem'}}>No expenses recorded for this month.</div>
-        ) : categoryRows.map(row => {
-          const pct = totalExpenses>0 ? Math.round(row.amount/totalExpenses*100) : 0;
-          return (
-            <div key={row.bucketId}>
-              <div className="row between">
-                <span style={{fontWeight:700, fontSize:'.88rem', display:'flex', alignItems:'center', gap:'.3rem'}}>
-                  {row.name}
-                  {row.isFallback && row.name!=='Unknown category' && <InfoIcon size={12} className="faint"/>}
-                </span>
-                <span className="tabular" style={{fontWeight:700, fontSize:'.85rem'}}>{PESO(row.amount)}</span>
-              </div>
-              <div className="progress-track" style={{marginTop:'.4rem'}}>
-                <div className="progress-fill" style={{width:pct+'%', background:'var(--brand)'}}/>
-              </div>
-              <div className="muted" style={{fontSize:'.78rem', marginTop:'.25rem'}}>{pct}% of month&rsquo;s spending</div>
-            </div>
-          );
-        })}
-      </div>
-
-      {period ? (
-        <>
-          <div className="row between" style={{marginTop:'1.4rem', marginBottom:'.6rem'}}>
-            <span className="section-title">Monthly Plan</span>
+          <div style={{fontWeight:800, fontSize:'1.2rem'}}>{reportMode==='yearly' ? 'Yearly Report' : 'Monthly Report'}</div>
+          <div className="muted" style={{fontSize:'.83rem', marginTop:'.1rem'}}>
+            {reportMode==='yearly' ? 'Spending and plan history, one year at a time.' : 'Spending and plan history, one month at a time.'}
           </div>
-          <div className="card" style={{display:'grid', gap:'.9rem'}}>
-            {planRows.map(row => (
-              <div key={row.id}>
+        </div>
+      </div>
+
+      <div className="row" style={{background:'var(--app-surface-2)', borderRadius:'var(--r-pill)', padding:'.25rem', marginBottom:'.9rem'}}>
+        <button type="button" onClick={()=>setReportMode('monthly')} style={{
+          flex:1, padding:'.5rem 0', borderRadius:'var(--r-pill)', border:'none', cursor:'pointer', font:'inherit',
+          fontWeight:800, fontSize:'.85rem',
+          background: reportMode==='monthly' ? 'var(--app-surface)' : 'transparent',
+          color: reportMode==='monthly' ? 'var(--app-ink)' : 'var(--app-ink-soft)',
+        }}>Monthly</button>
+        <button type="button" onClick={()=>setReportMode('yearly')} style={{
+          flex:1, padding:'.5rem 0', borderRadius:'var(--r-pill)', border:'none', cursor:'pointer', font:'inherit',
+          fontWeight:800, fontSize:'.85rem',
+          background: reportMode==='yearly' ? 'var(--app-surface)' : 'transparent',
+          color: reportMode==='yearly' ? 'var(--app-ink)' : 'var(--app-ink-soft)',
+        }}>Yearly</button>
+      </div>
+
+      {reportMode==='monthly' ? (
+        <>
+          <div className="row between" style={{background:'var(--app-surface-2)', borderRadius:'var(--r-pill)', padding:'.4rem .5rem', marginBottom:'1.1rem'}}>
+            <button type="button" className="icon-btn" style={{background:'var(--app-surface)'}} aria-label="Previous month"
+                    onClick={()=>setSelectedMonthKey(k=>shiftMonthKey(k,-1))}>
+              <ChevronLeftIcon size={16}/>
+            </button>
+            <span style={{fontWeight:800, fontSize:'.92rem'}}>{formatMonthLabel(selectedMonthKey)}</span>
+            <button type="button" className="icon-btn" style={{background:'var(--app-surface)'}} aria-label="Next month"
+                    disabled={isCurrentSelected} onClick={()=>setSelectedMonthKey(k=>shiftMonthKey(k,1))}>
+              <ChevronRightIcon size={16}/>
+            </button>
+          </div>
+
+          <div className="eyebrow" style={{marginBottom:'.6rem'}}>Summary</div>
+          <div className="card" style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.9rem'}}>
+            <div>
+              <div className="muted" style={{fontSize:'.74rem'}}>TOTAL EXPENSES</div>
+              <div className="tabular" style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.25rem', marginTop:'.15rem'}}>{PESO(totalExpenses)}</div>
+            </div>
+            <div>
+              <div className="muted" style={{fontSize:'.74rem'}}>USED FROM PROTECTED</div>
+              <div className="tabular" style={{fontWeight:800, fontSize:'1.1rem', marginTop:'.15rem', color:'var(--brand)'}}>{PESO(usedFromProtected)}</div>
+            </div>
+            {period && (
+              <>
+                <div>
+                  <div className="muted" style={{fontSize:'.74rem'}}>PLANNED MONTHLY INCOME</div>
+                  <div className="tabular" style={{fontWeight:800, fontSize:'1.1rem', marginTop:'.15rem'}}>{PESO(plannedIncome)}</div>
+                </div>
+                <div>
+                  <div className="muted" style={{fontSize:'.74rem'}}>PLAN REMAINING</div>
+                  <div className="tabular" style={{fontWeight:800, fontSize:'1.1rem', marginTop:'.15rem', color: isPlanOverspent ? 'var(--status-bad-text)' : 'var(--app-ink)'}}>
+                    {isPlanOverspent ? `${PESO(Math.abs(planRemaining))} over` : PESO(planRemaining)}
+                  </div>
+                </div>
+                <div className="muted" style={{fontSize:'.76rem', gridColumn:'1 / -1', marginTop:'.2rem', lineHeight:1.4}}>
+                  Reflects the income amount set for this month, not individual income deposits.
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="row between" style={{marginTop:'1.4rem', marginBottom:'.6rem'}}>
+            <span className="section-title">Spending by Category</span>
+          </div>
+          <div className="card" style={{display:'grid', gap:'.8rem'}}>
+            {categoryRows.length===0 ? (
+              <div className="muted" style={{textAlign:'center', fontSize:'.85rem'}}>No expenses recorded for this month.</div>
+            ) : categoryRows.map(row => {
+              const pct = totalExpenses>0 ? Math.round(row.amount/totalExpenses*100) : 0;
+              return (
+                <div key={row.bucketId}>
+                  <div className="row between">
+                    <span style={{fontWeight:700, fontSize:'.88rem', display:'flex', alignItems:'center', gap:'.3rem'}}>
+                      {row.name}
+                      {row.isFallback && row.name!=='Unknown category' && <InfoIcon size={12} className="faint"/>}
+                    </span>
+                    <span className="tabular" style={{fontWeight:700, fontSize:'.85rem'}}>{PESO(row.amount)}</span>
+                  </div>
+                  <div className="progress-track" style={{marginTop:'.4rem'}}>
+                    <div className="progress-fill" style={{width:pct+'%', background:'var(--brand)'}}/>
+                  </div>
+                  <div className="muted" style={{fontSize:'.78rem', marginTop:'.25rem'}}>{pct}% of month&rsquo;s spending</div>
+                </div>
+              );
+            })}
+          </div>
+
+          {period ? (
+            <>
+              <div className="row between" style={{marginTop:'1.4rem', marginBottom:'.6rem'}}>
+                <span className="section-title">Monthly Plan</span>
+              </div>
+              <div className="card" style={{display:'grid', gap:'.9rem'}}>
+                {planRows.map(row => (
+                  <div key={row.id}>
+                    <div className="row between">
+                      <span style={{fontWeight:700, fontSize:'.88rem'}}>{row.name}</span>
+                      <span className="muted tabular" style={{fontSize:'.8rem'}}>{row.pct}% &middot; {PESO(row.allocation)}</span>
+                    </div>
+                    <div className="row between" style={{marginTop:'.3rem'}}>
+                      <span className="muted tabular" style={{fontSize:'.8rem'}}>{PESO(row.used)} used of {PESO(row.allocation)}</span>
+                      <span className="tabular" style={{fontWeight:700, fontSize:'.8rem', color: row.overBudget ? 'var(--status-bad-text)' : 'var(--app-ink-soft)'}}>
+                        {row.overBudget ? `${PESO(row.used-row.allocation)} over budget` : `${PESO(Math.max(0, row.allocation-row.used))} remaining`}
+                      </span>
+                    </div>
+                    <div className="progress-track" style={{marginTop:'.4rem'}}>
+                      <div className="progress-fill" style={{
+                        width:Math.min(100, row.allocation>0 ? Math.round(row.used/row.allocation*100) : 0)+'%',
+                        background: row.overBudget ? 'var(--status-bad-icon)' : 'var(--brand)',
+                      }}/>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="row between" style={{marginTop:'1.4rem', marginBottom:'.6rem'}}>
+                <span className="section-title">Protected Money</span>
+              </div>
+              <div className="card">
                 <div className="row between">
-                  <span style={{fontWeight:700, fontSize:'.88rem'}}>{row.name}</span>
-                  <span className="muted tabular" style={{fontSize:'.8rem'}}>{row.pct}% &middot; {PESO(row.allocation)}</span>
+                  <span className="muted" style={{fontSize:'.84rem'}}>Protected Allocation</span>
+                  <span className="tabular" style={{fontWeight:700, fontSize:'.85rem'}}>{PESO(protectedAllocation)}</span>
                 </div>
-                <div className="row between" style={{marginTop:'.3rem'}}>
-                  <span className="muted tabular" style={{fontSize:'.8rem'}}>{PESO(row.used)} used of {PESO(row.allocation)}</span>
-                  <span className="tabular" style={{fontWeight:700, fontSize:'.8rem', color: row.overBudget ? 'var(--status-bad-text)' : 'var(--app-ink-soft)'}}>
-                    {row.overBudget ? `${PESO(row.used-row.allocation)} over budget` : `${PESO(Math.max(0, row.allocation-row.used))} remaining`}
-                  </span>
+                <div className="row between" style={{marginTop:'.5rem'}}>
+                  <span className="muted" style={{fontSize:'.84rem'}}>Used From Protected</span>
+                  <span className="tabular" style={{fontWeight:700, fontSize:'.85rem'}}>{PESO(usedFromProtected)}</span>
                 </div>
-                <div className="progress-track" style={{marginTop:'.4rem'}}>
-                  <div className="progress-fill" style={{
-                    width:Math.min(100, row.allocation>0 ? Math.round(row.used/row.allocation*100) : 0)+'%',
-                    background: row.overBudget ? 'var(--status-bad-icon)' : 'var(--brand)',
-                  }}/>
+                <div className="row between" style={{marginTop:'.5rem', paddingTop:'.6rem', borderTop:'1px solid var(--app-border)'}}>
+                  <span style={{fontWeight:800, fontSize:'.88rem'}}>Protected Remaining</span>
+                  <span className="tabular" style={{fontWeight:800, fontSize:'.88rem', color:'var(--brand)'}}>{PESO(protectedRemaining)}</span>
                 </div>
+              </div>
+            </>
+          ) : (
+            <div className="card" style={{marginTop:'1.4rem', display:'flex', gap:'.7rem'}}>
+              <div className="icon-btn" style={{background:'var(--app-surface-2)', color:'var(--app-ink-soft)', border:'none', width:34, height:34, flexShrink:0}}>
+                <InfoIcon size={17}/>
+              </div>
+              <div className="muted" style={{fontSize:'.83rem', lineHeight:1.4}}>
+                No monthly plan snapshot is available for this month. Spending history is still shown from your transactions.
+              </div>
+            </div>
+          )}
+
+          <div className="row between" style={{marginTop:'1.4rem', marginBottom:'.6rem'}}>
+            <span className="section-title">Transactions</span>
+          </div>
+          <div className="card" style={{padding:'1.2rem 1.15rem'}}>
+            {monthTxns.length===0 ? (
+              <div className="muted" style={{textAlign:'center', fontSize:'.85rem'}}>No expenses recorded for this month.</div>
+            ) : monthTxns.map((t,i) => {
+              const cat = resolveReportCategory(t, buckets);
+              return (
+                <div key={t.id} className="row between" style={{
+                  alignItems:'flex-start', marginTop: i?'.75rem':'0', paddingTop: i?'.75rem':'0',
+                  borderTop: i?'1px solid var(--app-border)':'none',
+                }}>
+                  <div className="row" style={{gap:'.65rem'}}>
+                    <div className="icon-btn" style={{width:36, height:36, border:'none', background:'var(--app-surface-2)', color:'var(--app-ink-soft)'}}>
+                      <ArrowDownCircleIcon size={17}/>
+                    </div>
+                    <div>
+                      <div style={{fontWeight:700, fontSize:'.9rem'}}>{t.note || cat.name}</div>
+                      <div className="muted" style={{fontSize:'.78rem', marginTop:'.1rem'}}>{cat.name} &middot; {formatTxnDate(t.date)}</div>
+                    </div>
+                  </div>
+                  <span className="tabular" style={{fontWeight:800, fontSize:'.9rem', flexShrink:0}}>&minus;{PESO(t.amount)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="row between" style={{background:'var(--app-surface-2)', borderRadius:'var(--r-pill)', padding:'.4rem .5rem', marginBottom:'1.1rem'}}>
+            <button type="button" className="icon-btn" style={{background:'var(--app-surface)'}} aria-label="Previous year"
+                    onClick={()=>setSelectedYear(y=>y-1)}>
+              <ChevronLeftIcon size={16}/>
+            </button>
+            <span style={{fontWeight:800, fontSize:'.92rem'}}>{selectedYear}</span>
+            <button type="button" className="icon-btn" style={{background:'var(--app-surface)'}} aria-label="Next year"
+                    disabled={isCurrentYearSelected} onClick={()=>setSelectedYear(y=>y+1)}>
+              <ChevronRightIcon size={16}/>
+            </button>
+          </div>
+
+          <div className="eyebrow" style={{marginBottom:'.6rem'}}>Summary</div>
+          <div className="card" style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.9rem'}}>
+            <div>
+              <div className="muted" style={{fontSize:'.74rem'}}>TOTAL EXPENSES</div>
+              <div className="tabular" style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.25rem', marginTop:'.15rem'}}>{PESO(yearTotalExpenses)}</div>
+            </div>
+            <div>
+              <div className="muted" style={{fontSize:'.74rem'}}>USED FROM PROTECTED</div>
+              <div className="tabular" style={{fontWeight:800, fontSize:'1.1rem', marginTop:'.15rem', color:'var(--brand)'}}>{PESO(yearUsedFromProtected)}</div>
+            </div>
+          </div>
+
+          <div className="row between" style={{marginTop:'1.4rem', marginBottom:'.6rem'}}>
+            <span className="section-title">Monthly Spending</span>
+          </div>
+          <div className="card" style={{display:'grid', gap:'.65rem'}}>
+            {monthlyBreakdown.map(row => (
+              <div key={row.monthIndex} className="row" style={{gap:'.6rem'}}>
+                <span className="muted" style={{fontSize:'.8rem', fontWeight:600, width:'2.6rem', flexShrink:0}}>{row.label}</span>
+                <div className="progress-track" style={{flex:1}}>
+                  {row.amount!=null && (
+                    <div className="progress-fill" style={{width:(maxMonthly>0 ? Math.round(row.amount/maxMonthly*100) : 0)+'%', background:'var(--brand)'}}/>
+                  )}
+                </div>
+                <span className="tabular" style={{fontSize:'.8rem', fontWeight:700, width:'4.4rem', textAlign:'right', flexShrink:0}}>
+                  {row.amount==null ? '—' : PESO(row.amount)}
+                </span>
               </div>
             ))}
           </div>
 
           <div className="row between" style={{marginTop:'1.4rem', marginBottom:'.6rem'}}>
-            <span className="section-title">Protected Money</span>
+            <span className="section-title">Spending by Category</span>
+          </div>
+          <div className="card" style={{display:'grid', gap:'.8rem'}}>
+            {yearCategoryRows.length===0 ? (
+              <div className="muted" style={{textAlign:'center', fontSize:'.85rem'}}>No expenses recorded for this year.</div>
+            ) : yearCategoryRows.map(row => {
+              const pct = yearTotalExpenses>0 ? Math.round(row.amount/yearTotalExpenses*100) : 0;
+              return (
+                <div key={row.bucketId}>
+                  <div className="row between">
+                    <span style={{fontWeight:700, fontSize:'.88rem', display:'flex', alignItems:'center', gap:'.3rem'}}>
+                      {row.name}
+                      {row.isFallback && row.name!=='Unknown category' && <InfoIcon size={12} className="faint"/>}
+                    </span>
+                    <span className="tabular" style={{fontWeight:700, fontSize:'.85rem'}}>{PESO(row.amount)}</span>
+                  </div>
+                  <div className="progress-track" style={{marginTop:'.4rem'}}>
+                    <div className="progress-fill" style={{width:pct+'%', background:'var(--brand)'}}/>
+                  </div>
+                  <div className="muted" style={{fontSize:'.78rem', marginTop:'.25rem'}}>{pct}% of year&rsquo;s spending</div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="row between" style={{marginTop:'1.4rem', marginBottom:'.6rem'}}>
+            <span className="section-title">Recorded Planned Income</span>
           </div>
           <div className="card">
-            <div className="row between">
-              <span className="muted" style={{fontSize:'.84rem'}}>Protected Allocation</span>
-              <span className="tabular" style={{fontWeight:700, fontSize:'.85rem'}}>{PESO(protectedAllocation)}</span>
+            {recordedMonthCount===0 ? (
+              <div className="muted" style={{fontSize:'.85rem', textAlign:'center'}}>No planned-income history recorded for this year.</div>
+            ) : (
+              <>
+                <div className="tabular" style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.25rem'}}>{PESO(recordedPlannedIncome)}</div>
+                <div className="muted" style={{fontSize:'.8rem', marginTop:'.3rem'}}>Coverage: {recordedMonthCount} of 12 months recorded</div>
+              </>
+            )}
+            <div className="muted" style={{fontSize:'.76rem', marginTop:'.7rem', lineHeight:1.4}}>
+              Based only on months with a saved monthly plan. This is not a record of actual income received.
             </div>
-            <div className="row between" style={{marginTop:'.5rem'}}>
-              <span className="muted" style={{fontSize:'.84rem'}}>Used From Protected</span>
-              <span className="tabular" style={{fontWeight:700, fontSize:'.85rem'}}>{PESO(usedFromProtected)}</span>
+          </div>
+
+          <div className="card" style={{marginTop:'1.4rem'}}>
+            <div className="muted" style={{fontSize:'.83rem', lineHeight:1.4}}>
+              Use Monthly Reports to review individual transactions for a specific month.
             </div>
-            <div className="row between" style={{marginTop:'.5rem', paddingTop:'.6rem', borderTop:'1px solid var(--app-border)'}}>
-              <span style={{fontWeight:800, fontSize:'.88rem'}}>Protected Remaining</span>
-              <span className="tabular" style={{fontWeight:800, fontSize:'.88rem', color:'var(--brand)'}}>{PESO(protectedRemaining)}</span>
-            </div>
+            <button type="button" className="btn-primary" style={{marginTop:'.8rem'}} onClick={()=>setReportMode('monthly')}>
+              View Monthly Reports
+            </button>
           </div>
         </>
-      ) : (
-        <div className="card" style={{marginTop:'1.4rem', display:'flex', gap:'.7rem'}}>
-          <div className="icon-btn" style={{background:'var(--app-surface-2)', color:'var(--app-ink-soft)', border:'none', width:34, height:34, flexShrink:0}}>
-            <InfoIcon size={17}/>
-          </div>
-          <div className="muted" style={{fontSize:'.83rem', lineHeight:1.4}}>
-            No monthly plan snapshot is available for this month. Spending history is still shown from your transactions.
-          </div>
-        </div>
       )}
-
-      <div className="row between" style={{marginTop:'1.4rem', marginBottom:'.6rem'}}>
-        <span className="section-title">Transactions</span>
-      </div>
-      <div className="card" style={{padding:'1.2rem 1.15rem'}}>
-        {monthTxns.length===0 ? (
-          <div className="muted" style={{textAlign:'center', fontSize:'.85rem'}}>No expenses recorded for this month.</div>
-        ) : monthTxns.map((t,i) => {
-          const cat = resolveReportCategory(t, buckets);
-          return (
-            <div key={t.id} className="row between" style={{
-              alignItems:'flex-start', marginTop: i?'.75rem':'0', paddingTop: i?'.75rem':'0',
-              borderTop: i?'1px solid var(--app-border)':'none',
-            }}>
-              <div className="row" style={{gap:'.65rem'}}>
-                <div className="icon-btn" style={{width:36, height:36, border:'none', background:'var(--app-surface-2)', color:'var(--app-ink-soft)'}}>
-                  <ArrowDownCircleIcon size={17}/>
-                </div>
-                <div>
-                  <div style={{fontWeight:700, fontSize:'.9rem'}}>{t.note || cat.name}</div>
-                  <div className="muted" style={{fontSize:'.78rem', marginTop:'.1rem'}}>{cat.name} &middot; {formatTxnDate(t.date)}</div>
-                </div>
-              </div>
-              <span className="tabular" style={{fontWeight:800, fontSize:'.9rem', flexShrink:0}}>&minus;{PESO(t.amount)}</span>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
