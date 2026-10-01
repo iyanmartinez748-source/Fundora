@@ -291,6 +291,44 @@
     font-weight:700; font-size:.8rem; color:var(--app-ink-faint);
   }
   .seg-btn[aria-pressed="true"]{background:var(--app-surface); color:var(--app-ink); box-shadow:var(--shadow-sm);}
+
+  /* ---------- Home page density helpers (mobile fix #1) ----------
+     Base values below equal the prior inline styles exactly, so desktop/
+     phone-preview (>560px) is visually unchanged. Only the mobile media
+     query further down tightens them for real phones. */
+  .home-alloc-card{margin-top:1.3rem; padding:1.4rem 1.2rem;}
+  .home-alloc-tagline{margin-top:1rem;}
+  .home-alloc-legend{margin-top:1.1rem; padding-top:1.1rem;}
+  .home-donut-value-lg{font-size:1.75rem;}
+  .home-donut-value-sm{font-size:1.05rem;}
+  .home-status-card{padding:1.3rem 1.25rem;}
+  .home-hero-amount{font-size:2.2rem;}
+  .home-status-amount{font-size:2.15rem;}
+  .donut-home{width:176px; height:176px;}
+
+  /* ---------- real-phone density (mobile fix #1) ----------
+     Scoped to the same breakpoint that already turns .phone-shell into
+     the real device viewport. Desktop phone-preview (>560px) is untouched. */
+  @media (max-width:560px){
+    .app-scroll{padding:1rem 1rem 1.2rem;}
+    .card{padding:1rem;}
+    .page-title{font-size:1.18rem;}
+    .page-sub{font-size:.8rem;}
+    .section-title{font-size:.92rem;}
+    .eyebrow{font-size:.64rem;}
+
+    .home-alloc-card{margin-top:1rem; padding:1.05rem .95rem;}
+    .home-alloc-tagline{margin-top:.75rem;}
+    .home-alloc-legend{margin-top:.85rem; padding-top:.85rem;}
+    .home-donut-value-lg{font-size:1.5rem;}
+    .home-donut-value-sm{font-size:.95rem;}
+    .home-status-card{padding:1rem 1.05rem;}
+    .home-hero-amount{font-size:1.85rem;}
+    .home-status-amount{font-size:1.8rem;}
+    .donut-home{width:140px; height:140px;}
+
+    .bottom-nav{padding:.45rem .5rem calc(.5rem + env(safe-area-inset-bottom,0px));}
+  }
 </style>
 
 <div class="stage">
@@ -813,13 +851,13 @@ function TopBar({title, onSettings}){
   );
 }
 
-function Donut({segments, size=176, thickness=20}){
+function Donut({segments, size=176, thickness=20, className}){
   const r = (size - thickness) / 2;
   const c = 2 * Math.PI * r;
   const gap = 5; // px of visual separation between segments
   let cursor = 0;
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{transform:'rotate(-90deg)'}}>
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className={className} style={{transform:'rotate(-90deg)'}}>
       <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--app-surface-2)" strokeWidth={thickness}/>
       {segments.map((s,i)=>{
         const len = (s.pct/100)*c;
@@ -1098,32 +1136,32 @@ function HomePage({navigate, income, buckets, transactions, editExpenseTransacti
       <TopBar onSettings={()=>navigate('settings')}/>
 
       <div className="eyebrow">Monthly Income</div>
-      <div className="tabular" style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'2.2rem', lineHeight:1.1, marginTop:'.15rem'}}>
+      <div className="tabular home-hero-amount" style={{fontFamily:'var(--font-display)', fontWeight:800, lineHeight:1.1, marginTop:'.15rem'}}>
         {PESO(income)}
       </div>
       <div className="muted" style={{fontSize:'.85rem', marginTop:'.25rem', fontWeight:600}}>{formatMonthLabel(localMonthKey(new Date()))}</div>
 
-      <div className="card" style={{marginTop:'1.3rem', padding:'1.4rem 1.2rem'}}>
+      <div className="card home-alloc-card">
         <div style={{display:'flex', justifyContent:'center', position:'relative'}}>
-          <Donut segments={segments}/>
+          <Donut segments={segments} className="donut-home"/>
           <div style={{position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', textAlign:'center'}}>
             {hasIncome ? (
               <>
-                <div style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.75rem'}}>{totalPct}%</div>
+                <div className="home-donut-value-lg" style={{fontFamily:'var(--font-display)', fontWeight:800}}>{totalPct}%</div>
                 <div className="muted" style={{fontSize:'.72rem', fontWeight:700, letterSpacing:'.05em', textTransform:'uppercase', marginTop:'.1rem'}}>Allocated</div>
               </>
             ) : (
               <>
-                <div style={{fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.05rem', lineHeight:1.2}}>Set up</div>
+                <div className="home-donut-value-sm" style={{fontFamily:'var(--font-display)', fontWeight:800, lineHeight:1.2}}>Set up</div>
                 <div className="muted" style={{fontSize:'.68rem', fontWeight:700, letterSpacing:'.04em', textTransform:'uppercase', marginTop:'.15rem'}}>your income</div>
               </>
             )}
           </div>
         </div>
-        <div style={{textAlign:'center', fontSize:'.88rem', fontWeight:600, color:'var(--brand)', marginTop:'1rem'}}>
+        <div className="home-alloc-tagline" style={{textAlign:'center', fontSize:'.88rem', fontWeight:600, color:'var(--brand)'}}>
           {hasIncome ? 'Every peso has a purpose.' : 'Add your income in Plan or Settings to activate your plan.'}
         </div>
-        <div className="row" style={{flexWrap:'wrap', justifyContent:'center', gap:'.55rem .95rem', marginTop:'1.1rem', paddingTop:'1.1rem', borderTop:'1px solid var(--app-border)'}}>
+        <div className="row home-alloc-legend" style={{flexWrap:'wrap', justifyContent:'center', gap:'.55rem .95rem', borderTop:'1px solid var(--app-border)'}}>
           {liveBuckets.map(b=>(
             <div key={b.id} className="row" style={{gap:'.4rem'}}>
               <span style={{width:8,height:8,borderRadius:99,background:b.color,display:'inline-block'}}/>
@@ -1135,16 +1173,16 @@ function HomePage({navigate, income, buckets, transactions, editExpenseTransacti
 
       <div style={{marginTop:'1.5rem'}}>
         <div className="eyebrow" style={{marginBottom:'.65rem'}}>Money Status</div>
-        <div className="card" style={{
+        <div className="card home-status-card" style={{
           background: isOverspent ? 'var(--status-bad-icon)' : 'linear-gradient(155deg, var(--brand) 0%, var(--brand-strong) 100%)',
-          border:'none', boxShadow: isOverspent ? '0 16px 32px -16px rgba(220,38,38,.45)' : '0 16px 32px -16px rgba(14,79,61,.55)', padding:'1.3rem 1.25rem'
+          border:'none', boxShadow: isOverspent ? '0 16px 32px -16px rgba(220,38,38,.45)' : '0 16px 32px -16px rgba(14,79,61,.55)'
         }}>
           <div className="row between" style={{alignItems:'flex-start'}}>
             <div>
               <div style={{color:'rgba(255,255,255,.8)', fontSize:'.76rem', fontWeight:700, letterSpacing:'.05em', textTransform:'uppercase'}}>
                 {isOverspent ? 'Overspent' : 'Total Remaining'}
               </div>
-              <div className="tabular" style={{color:'#fff', fontFamily:'var(--font-display)', fontWeight:800, fontSize:'2.15rem', marginTop:'.35rem', lineHeight:1.1}}>
+              <div className="tabular home-status-amount" style={{color:'#fff', fontFamily:'var(--font-display)', fontWeight:800, marginTop:'.35rem', lineHeight:1.1}}>
                 {PESO(isOverspent ? deficit : totalRemaining)}
               </div>
               <div style={{color:'rgba(255,255,255,.75)', fontSize:'.8rem', marginTop:'.3rem'}}>
