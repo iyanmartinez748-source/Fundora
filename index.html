@@ -1912,7 +1912,11 @@ function TransactionsPage({income, setIncome, buckets, setBuckets, transactions,
       <TopBar/>
       <div className="page-head">
         <div className="page-title">Add Transaction</div>
-        <div className="page-sub">Visual only &mdash; nothing is saved yet</div>
+        <div className="page-sub">
+          {tab==='expense' ? 'Record money you spent.'
+            : tab==='income' ? 'Record money you received.'
+            : 'Visual only — transfers are not available yet.'}
+        </div>
       </div>
 
       <div className="row" style={{gap:'.4rem', background:'var(--app-surface-2)', padding:'.3rem', borderRadius:'var(--r-pill)'}}>
