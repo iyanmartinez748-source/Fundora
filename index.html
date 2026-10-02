@@ -137,8 +137,12 @@
     .phone-screen{border-radius:0;}
   }
 
-  .app-scroll{flex:1 1 auto; overflow-y:auto; min-height:0; padding:1.1rem 1.15rem 1.4rem;}
+  .app-scroll{flex:1 1 auto; overflow-y:auto; min-height:0; padding:1.1rem 1.15rem 1.4rem; animation:page-enter .2s ease-out;}
   .app-scroll::-webkit-scrollbar{width:0;}
+  @keyframes page-enter{
+    0%{opacity:0; transform:translateY(6px);}
+    100%{opacity:1; transform:translateY(0);}
+  }
 
   /* ---------- shared UI ---------- */
   .row{display:flex; align-items:center;}
@@ -167,6 +171,8 @@
     background:var(--app-surface); border:1px solid var(--app-border); border-radius:var(--r-lg);
     box-shadow:var(--shadow-sm); padding:1.15rem;
   }
+  button.card{transition:transform .12s ease-out;}
+  button.card:active{transform:scale(.98);}
   .section-title{font-size:.98rem; font-weight:800; font-family:var(--font-display); color:var(--app-ink);}
   .muted{color:var(--app-ink-soft);}
   .faint{color:var(--app-ink-faint);}
@@ -176,12 +182,15 @@
     background:var(--brand); color:#fff; border:none; border-radius:var(--r-md);
     padding:.95rem 1.2rem; font-weight:700; font-size:.95rem; width:100%;
     box-shadow:0 10px 22px -12px rgba(14,79,61,.55);
+    transition:transform .12s ease-out;
   }
-  .btn-primary:active{background:var(--brand-strong);}
+  .btn-primary:active{background:var(--brand-strong); transform:scale(.97);}
   .btn-ghost{
     background:transparent; border:1px solid var(--app-border); color:var(--app-ink);
     border-radius:var(--r-pill); padding:.5rem 1rem; font-weight:700; font-size:.8rem;
+    transition:transform .12s ease-out;
   }
+  .btn-ghost:active{transform:scale(.97);}
   .btn-soon{
     background:var(--app-surface-2); border:1px dashed var(--app-border); color:var(--app-ink-faint);
     border-radius:var(--r-pill); padding:.5rem .95rem; font-weight:700; font-size:.76rem;
@@ -215,14 +224,25 @@
   .nav-item{
     display:flex; flex-direction:column; align-items:center; gap:.2rem; background:none; border:none;
     color:var(--app-ink-faint); font-size:.66rem; font-weight:700; padding:.3rem .5rem; width:56px;
+    transition:transform .12s ease-out;
   }
   .nav-item[aria-current="true"]{color:var(--brand);}
+  .nav-item:active{transform:scale(.95);}
+  @keyframes nav-icon-pop{
+    0%{transform:translateY(0) scale(1);}
+    40%{transform:translateY(-4px) scale(1.12);}
+    70%{transform:translateY(1px) scale(.98);}
+    100%{transform:translateY(0) scale(1);}
+  }
+  .nav-icon-pop{display:inline-flex; animation:nav-icon-pop .32s ease-out;}
   .nav-fab{
     width:52px; height:52px; border-radius:var(--r-pill); background:var(--brand); color:#fff;
     display:flex; align-items:center; justify-content:center; border:none; margin-top:-26px;
     box-shadow:0 12px 22px -10px rgba(14,79,61,.6); flex-shrink:0;
+    transition:transform .12s ease-out;
   }
   .nav-fab[aria-current="true"]{background:var(--brand-strong);}
+  .nav-fab:active{transform:scale(.93);}
 
   /* ---------- page header ---------- */
   .page-head{margin-bottom:1.1rem;}
@@ -250,8 +270,9 @@
     width:30px; height:30px; border-radius:var(--r-pill); border:1px solid var(--app-border);
     background:var(--app-surface-2); color:var(--app-ink); font-weight:800; flex-shrink:0;
     display:flex; align-items:center; justify-content:center;
+    transition:transform .12s ease-out;
   }
-  .stepper-btn:active{background:var(--brand-tint); color:var(--brand); border-color:var(--brand);}
+  .stepper-btn:active{background:var(--brand-tint); color:var(--brand); border-color:var(--brand); transform:scale(.95);}
   .pct-input{
     width:3.4rem; text-align:center; font-weight:800; font-size:.92rem; font-family:var(--font-display);
     border:1px solid var(--app-border); border-radius:var(--r-sm); padding:.4rem .2rem;
@@ -280,26 +301,40 @@
   .modal-backdrop{
     position:absolute; inset:0; background:rgba(10,10,8,.5); z-index:40;
     display:flex; align-items:flex-end; justify-content:center;
+    animation:modal-backdrop-in .15s ease-out;
+  }
+  @keyframes modal-backdrop-in{
+    from{opacity:0;}
+    to{opacity:1;}
   }
   .modal-sheet{
     width:100%; background:var(--app-surface); border-radius:24px 24px 0 0;
     padding:1.1rem 1.25rem calc(1.3rem + env(safe-area-inset-bottom,0px));
     box-shadow:0 -14px 30px rgba(0,0,0,.25);
     max-height:90%; overflow-y:auto; -webkit-overflow-scrolling:touch;
+    animation:modal-sheet-in .22s ease-out;
+  }
+  @keyframes modal-sheet-in{
+    from{opacity:0; transform:translateY(16px);}
+    to{opacity:1; transform:translateY(0);}
   }
 
   /* ---------- settings screen ---------- */
   .settings-row{
     width:100%; background:none; border:none; padding:.85rem 0; text-align:left;
     display:flex; align-items:center; justify-content:space-between; color:inherit; font:inherit; gap:.6rem;
+    transition:transform .12s ease-out;
   }
+  .settings-row:active{transform:scale(.98);}
   .settings-row + .settings-row{border-top:1px solid var(--app-border);}
   .seg{display:flex; gap:.4rem; background:var(--app-surface-2); padding:.3rem; border-radius:var(--r-pill);}
   .seg-btn{
     flex:1; border:none; background:transparent; padding:.5rem .4rem; border-radius:var(--r-pill);
     font-weight:700; font-size:.8rem; color:var(--app-ink-faint);
+    transition:transform .12s ease-out;
   }
   .seg-btn[aria-pressed="true"]{background:var(--app-surface); color:var(--app-ink); box-shadow:var(--shadow-sm);}
+  .seg-btn:active{transform:scale(.97);}
 
   /* ---------- Home page density helpers (mobile fix #1) ----------
      Base values below equal the prior inline styles exactly, so desktop/
@@ -340,7 +375,7 @@
       padding:.45rem .5rem calc(.5rem + env(safe-area-inset-bottom,0px));
       position:relative; z-index:5;
     }
-    .nav-fab{margin-top:-18px;}
+    .nav-fab{margin-top:-4px;}
 
     /* iOS auto-zoom safeguard: every text/date/numeric field below 16px triggers WebKit's
        focus-zoom. Most of these set font-size inline, and the .pct-input class rule also beats
@@ -968,6 +1003,14 @@ function BucketRow({bucket, showBar=true}){
 }
 
 function BottomNav({route, navigate}){
+  // Per-item tap counter — bumping it changes the icon span's `key`, forcing React to mount a
+  // fresh DOM node so the nav-icon-pop CSS animation always replays, even when tapping the
+  // already-active route (where aria-current never changes and nothing else would retrigger it).
+  const [popKeys, setPopKeys] = useState({});
+  function handleTap(id){
+    setPopKeys(k => ({...k, [id]: (k[id]||0)+1}));
+    navigate(id);
+  }
   const items = [
     {id:'home', label:'Home', Icon:HomeIcon},
     {id:'plan', label:'Plan', Icon:SlidersIcon},
@@ -979,16 +1022,16 @@ function BottomNav({route, navigate}){
   return (
     <nav className="bottom-nav">
       {items.map(it=>(
-        <button key={it.id} className="nav-item" aria-current={route===it.id} onClick={()=>navigate(it.id)}>
-          <it.Icon size={21}/><span>{it.label}</span>
+        <button key={it.id} className="nav-item" aria-current={route===it.id} onClick={()=>handleTap(it.id)}>
+          <span key={popKeys[it.id]||0} className="nav-icon-pop"><it.Icon size={21}/></span><span>{it.label}</span>
         </button>
       ))}
       <button className="nav-fab" aria-current={route==='transactions'} aria-label="Add transaction" onClick={()=>navigate('transactions')}>
         <PlusIcon size={24}/>
       </button>
       {items2.map(it=>(
-        <button key={it.id} className="nav-item" aria-current={route===it.id} onClick={()=>navigate(it.id)}>
-          <it.Icon size={21}/><span>{it.label}</span>
+        <button key={it.id} className="nav-item" aria-current={route===it.id} onClick={()=>handleTap(it.id)}>
+          <span key={popKeys[it.id]||0} className="nav-icon-pop"><it.Icon size={21}/></span><span>{it.label}</span>
         </button>
       ))}
     </nav>
