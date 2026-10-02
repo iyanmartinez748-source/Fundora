@@ -340,6 +340,17 @@
       position:relative; z-index:5;
     }
     .nav-fab{margin-top:-18px;}
+
+    /* iOS auto-zoom safeguard: every text/date/numeric field below 16px triggers WebKit's
+       focus-zoom. Most of these set font-size inline, and the .pct-input class rule also beats
+       a bare element selector on specificity — so !important is required to actually win here,
+       not just styling preference. The AmountField inputs (id ends in "-amount") are explicitly
+       excluded so their intentional large 2.2rem size is untouched. */
+    input:not([id$="-amount"]),
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
   }
 </style>
 
@@ -733,8 +744,19 @@ function bucketPlanSnapshotsEqual(a, b){
 // month is ever fabricated. A v2 blob's own periods value must already be a plain object; its
 // contents are carried through completely untouched (B1 never writes real data into it). Any
 // other version is treated exactly like a corrupted/unsupported blob — never silently guessed.
+// Phase B2: local-only profile identity (name/email) — cosmetic, never read by any financial
+// calculation. Hydrated independently of the financial fields so a missing/malformed profile
+// can never affect income/buckets/goals/transactions/periods hydration or persistenceOK.
+const DEFAULT_PROFILE = { name:'Alex', email:'user@example.com' };
+function hydrateProfile(raw){
+  if(!raw || typeof raw!=='object') return { ...DEFAULT_PROFILE };
+  const name = (typeof raw.name==='string' && raw.name.trim()) ? raw.name.trim() : DEFAULT_PROFILE.name;
+  const email = (typeof raw.email==='string' && raw.email.trim()) ? raw.email.trim() : DEFAULT_PROFILE.email;
+  return { name, email };
+}
+
 function loadPersistedState(){
-  const defaults = () => ({ income:0, buckets:initialBuckets(), goals:initialGoals(), transactions:[], periods:{}, persistenceOK:true });
+  const defaults = () => ({ income:0, buckets:initialBuckets(), goals:initialGoals(), transactions:[], periods:{}, profile:{...DEFAULT_PROFILE}, persistenceOK:true });
 
   let raw;
   try { raw = localStorage.getItem(STORAGE_KEY); } catch(e) { return { ...defaults(), persistenceOK:false }; }
@@ -747,17 +769,24 @@ function loadPersistedState(){
     && Array.isArray(parsed.buckets) && Array.isArray(parsed.goals) && Array.isArray(parsed.transactions);
   const isV1 = hasCoreArrays && parsed.version===1;
   const isV2 = hasCoreArrays && parsed.version===2 && isPlainObject(parsed.periods);
-  if(!isV1 && !isV2) return { ...defaults(), persistenceOK:false };
+  // Phase B2: v3 = v2 shape + an (optional, leniently-hydrated) profile container. A missing or
+  // malformed parsed.profile is NEVER a reason to reject the blob — hydrateProfile always
+  // succeeds and falls back to DEFAULT_PROFILE field-by-field.
+  const isV3 = hasCoreArrays && parsed.version===3 && isPlainObject(parsed.periods);
+  if(!isV1 && !isV2 && !isV3) return { ...defaults(), persistenceOK:false };
 
   const incomeNum = Number(parsed.income);
   const income = (isFiniteNumber(incomeNum) && incomeNum>=0) ? incomeNum : 0;
   const buckets = dedupeById(parsed.buckets.map(hydrateBucket).filter(Boolean));
   const goals = dedupeById(parsed.goals.map(hydrateGoal).filter(Boolean));
   const transactions = dedupeById(parsed.transactions.map(hydrateTransaction).filter(Boolean));
-  // v1 has no periods yet — never fabricate history, start empty. A v2 blob's periods container
-  // was already confirmed to be a plain object by isV2 above; each entry is now hydrated
-  // individually so one malformed period can never take down the rest of a user's data.
-  const periods = isV2 ? hydratePeriods(parsed.periods) : {};
+  // v1 has no periods yet — never fabricate history, start empty. A v2/v3 blob's periods
+  // container was already confirmed to be a plain object by isV2/isV3 above; each entry is now
+  // hydrated individually so one malformed period can never take down the rest of a user's data.
+  const periods = (isV2 || isV3) ? hydratePeriods(parsed.periods) : {};
+  // v1/v2 blobs predate profile entirely — default rather than fabricate. v3 hydrates whatever
+  // was actually saved, leniently.
+  const profile = isV3 ? hydrateProfile(parsed.profile) : { ...DEFAULT_PROFILE };
 
   // Phase B3a2: bucket.used now means CURRENT-MONTH expense usage — reconstructed fresh from the
   // already-hydrated/deduped `transactions` above (never raw parsed.transactions) every time the
@@ -772,20 +801,23 @@ function loadPersistedState(){
   return {
     income,
     buckets: liveBuckets,
-    goals, transactions, periods, persistenceOK:true,
+    goals, transactions, periods, profile, persistenceOK:true,
   };
 }
 
 // Single centralized write path — the only place localStorage is ever touched. No financial
 // mutation handler anywhere writes to storage directly; App's one effect calls this whenever
-// income/buckets/goals/transactions/periods change. Returns true on a successful write, false on
-// any serialization or storage failure, so the caller can latch persistence off for the session.
+// income/buckets/goals/transactions/periods/profile change. Returns true on a successful write,
+// false on any serialization or storage failure, so the caller can latch persistence off for the
+// session.
 // Phase B1: writes schema version 2, which adds `periods` alongside the unchanged current-state
 // fields — periods is passed through as-is, never populated or shaped by this function.
-function saveState({income, buckets, goals, transactions, periods}){
+// Phase B2: writes schema version 3, which adds `profile` alongside the unchanged version-2
+// fields — profile is passed through as-is, never populated or shaped by this function.
+function saveState({income, buckets, goals, transactions, periods, profile}){
   try {
     const payload = {
-      version: 2,
+      version: 3,
       income,
       buckets: buckets.map(b => ({
         id:b.id, name:b.name, pct:b.pct, used:b.used, kind:b.kind, color:b.color,
@@ -797,6 +829,7 @@ function saveState({income, buckets, goals, transactions, periods}){
       })),
       transactions,
       periods,
+      profile,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     return true;
@@ -3191,14 +3224,13 @@ function SettingsSection({title, children}){
   );
 }
 
-function SettingsPage({navigate, income, setIncome, buckets}){
+function SettingsPage({navigate, income, setIncome, buckets, profile, setProfile}){
   const [toast, setToast] = useState('');
   function showToast(msg){
     setToast(msg);
     setTimeout(()=>setToast(''), 2200);
   }
 
-  const [profile, setProfile] = useState({name:'Alex', email:'user@example.com'});
   const [profileOpen, setProfileOpen] = useState(false);
   const [formName, setFormName] = useState(profile.name);
   const [formEmail, setFormEmail] = useState(profile.email);
@@ -3272,10 +3304,10 @@ function SettingsPage({navigate, income, setIncome, buckets}){
           {profile.name.charAt(0).toUpperCase()}
         </div>
         <div style={{flex:1, minWidth:0}}>
-          <div style={{fontWeight:800, fontSize:'.98rem'}}>{profile.name}</div>
-          <div className="muted" style={{fontSize:'.8rem', marginTop:'.1rem'}}>{profile.email}</div>
+          <div style={{fontWeight:800, fontSize:'.98rem', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{profile.name}</div>
+          <div className="muted" style={{fontSize:'.8rem', marginTop:'.1rem', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{profile.email}</div>
         </div>
-        <button type="button" className="btn-ghost" onClick={openProfile}>Edit Profile</button>
+        <button type="button" className="btn-ghost" style={{flexShrink:0}} onClick={openProfile}>Edit Profile</button>
       </div>
 
       <SettingsSection title="Money Setup">
@@ -3377,10 +3409,6 @@ function SettingsPage({navigate, income, setIncome, buckets}){
             width:'100%', padding:'.75rem .9rem', borderRadius:'var(--r-md)', border:'1px solid var(--app-border)',
             background:'var(--app-surface)', fontSize:'.9rem', color:'var(--app-ink)'
           }}/>
-
-          <div className="muted" style={{fontSize:'.76rem', marginTop:'.8rem', lineHeight:1.4}}>
-            Prototype only &mdash; profile changes are not saved permanently.
-          </div>
 
           <div className="row" style={{gap:'.6rem', marginTop:'1.3rem'}}>
             <button type="button" className="btn-ghost" style={{flex:1}} onClick={()=>setProfileOpen(false)}>Cancel</button>
@@ -3623,6 +3651,9 @@ function App(){
   // yet receives it and no financial handler reads it; it is still purely plan/income
   // bookkeeping infrastructure for a future Reports phase.
   const [periods, setPeriods] = useState(() => persisted.periods);
+  // Phase B2: local-only profile identity (name/email). Cosmetic only — never read by any
+  // financial calculation, bucket, goal, transaction, period, or Budget Pace logic.
+  const [profile, setProfile] = useState(() => persisted.profile);
 
   // Phase B3a1: keeps periods[currentMonthKey] synchronized with live income/buckets — creating
   // it on first run if absent (brand-new user, or a real calendar-month gap since the app was
@@ -3658,9 +3689,9 @@ function App(){
   // no new React state/context/timer), mirroring how a failed read is already handled.
   useEffect(() => {
     if(!persistenceEnabledRef.current) return;
-    const ok = saveState({income, buckets, goals, transactions, periods});
+    const ok = saveState({income, buckets, goals, transactions, periods, profile});
     if(!ok) persistenceEnabledRef.current = false;
-  }, [income, buckets, goals, transactions, periods]);
+  }, [income, buckets, goals, transactions, periods, profile]);
 
   // Corrects an existing EXPENSE transaction: reverses the OLD bucket effect and applies the NEW
   // one in a single setBuckets pass, using the transaction's OWN stored old values (never trusting
@@ -3776,7 +3807,7 @@ function App(){
     transactions: <TransactionsPage income={income} setIncome={setIncome} buckets={buckets} setBuckets={setBuckets} transactions={transactions} setTransactions={setTransactions}/>,
     goals: <GoalsPage goals={goals} setGoals={setGoals} buckets={buckets}/>,
     insights: <InsightsPage navigate={navigate} income={income} buckets={buckets}/>,
-    settings: <SettingsPage navigate={navigate} income={income} setIncome={setIncome} buckets={buckets}/>,
+    settings: <SettingsPage navigate={navigate} income={income} setIncome={setIncome} buckets={buckets} profile={profile} setProfile={setProfile}/>,
     // Reports V1: read-only — intentionally receives no setters (no setIncome/setBuckets/setGoals/
     // setTransactions/setPeriods), so this route can never mutate financial data or period history.
     reports: <ReportsPage navigate={navigate} buckets={buckets} transactions={transactions} periods={periods}/>,
