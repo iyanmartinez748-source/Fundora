@@ -1589,11 +1589,13 @@ function PlanPage({buckets, setBuckets, income, showToast}){
     const targetId = paceBucketId;
     setBuckets(bs => bs.map(b => b.id===targetId ? { ...b, paceStartDate: paceLocalDateStr(new Date()) } : b));
     closePaceModal();
+    showToast('Budget pace restarted');
   }
   function confirmRemovePace(){
     const targetId = paceBucketId;
     setBuckets(bs => bs.map(b => b.id===targetId ? { ...b, paceDays:null, paceStartDate:null } : b));
     closePaceModal();
+    showToast('Budget pace removed');
   }
 
   // Budget Pace display — derived fresh every render, never stored. `paceToday` is computed once
