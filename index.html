@@ -2372,11 +2372,7 @@ function TransactionsPage({income, setIncome, buckets, setBuckets, transactions,
   );
 }
 
-const GOAL_FUNDING_BUCKETS = ['savings','living','bills','family','wants'];
-
 function GoalsPage({goals, setGoals, buckets, showToast}){
-  const bucketLookup = Object.fromEntries(buckets.map(b=>[b.id,b]));
-
   const [addOpen, setAddOpen] = useState(false);
   const [formName, setFormName] = useState('');
   const [formTarget, setFormTarget] = useState('');
@@ -2385,10 +2381,10 @@ function GoalsPage({goals, setGoals, buckets, showToast}){
   const [formPriority, setFormPriority] = useState(false);
 
   const [detailId, setDetailId] = useState(null);
+  // Add to Saved — goal-only planning figure, NOT a bucket/financial transfer (see audit).
   const [addMoneyOpen, setAddMoneyOpen] = useState(false);
   const [addMoneyAmount, setAddMoneyAmount] = useState('500');
-  const [addMoneyBucket, setAddMoneyBucket] = useState('savings');
-  const [addMoneyConfirmed, setAddMoneyConfirmed] = useState(false);
+  const addMoneyNum = parseInt(addMoneyAmount,10)||0;
 
   // Edit Goal — mirrors the existing New Goal form's fields/state shape exactly, seeded from the
   // live goal (never a stale copy) and committed back via setGoals(gs=>gs.map(...)) by id, same
@@ -2463,8 +2459,12 @@ function GoalsPage({goals, setGoals, buckets, showToast}){
     showToast('Goal deleted');
   }
   function confirmAddMoney(){
-    setAddMoneyConfirmed(true);
-    setTimeout(()=>setAddMoneyConfirmed(false), 2200);
+    if(!detailGoal || !(addMoneyNum>0)) return;
+    const targetId = detailGoal.id;
+    setGoals(gs=>gs.map(g=> g.id===targetId ? {...g, saved: g.saved+addMoneyNum} : g));
+    setAddMoneyAmount('');
+    setAddMoneyOpen(false);
+    showToast('Added to goal');
   }
   function openAddGoal(){
     setFormName(''); setFormTarget(''); setFormSaved(''); setFormDate(''); setFormPriority(false);
@@ -2715,7 +2715,7 @@ function GoalsPage({goals, setGoals, buckets, showToast}){
           )}
 
           <div className="row" style={{gap:'.6rem', marginTop:'1.2rem'}}>
-            <button type="button" className="btn-primary" style={{flex:1.4}} onClick={()=>setAddMoneyOpen(v=>!v)}>+ Add Money</button>
+            <button type="button" className="btn-primary" style={{flex:1.4}} onClick={()=>setAddMoneyOpen(v=>!v)}>+ Add to Saved</button>
             <button type="button" className="btn-ghost" style={{flex:1, justifyContent:'center'}} onClick={()=>openEditGoal(detailGoal)}>Edit Goal</button>
           </div>
 
@@ -2728,6 +2728,8 @@ function GoalsPage({goals, setGoals, buckets, showToast}){
 
           {addMoneyOpen && (
             <div className="card" style={{marginTop:'1rem'}}>
+              <div style={{fontWeight:800, fontSize:'.95rem', marginBottom:'.7rem'}}>Add to Saved</div>
+
               <label htmlFor="goal-add-amount" className="eyebrow" style={{display:'block', marginBottom:'.4rem'}}>Amount</label>
               <div className="row" style={{gap:'.5rem', border:'1px solid var(--app-border)', borderRadius:'var(--r-md)', padding:'.65rem .8rem', background:'var(--app-surface)'}}>
                 <span style={{fontWeight:700}}>&#8369;</span>
@@ -2735,26 +2737,11 @@ function GoalsPage({goals, setGoals, buckets, showToast}){
                        style={{flex:1, border:'none', outline:'none', background:'transparent', fontSize:'.9rem', color:'var(--app-ink)'}}/>
               </div>
 
-              <div className="eyebrow" style={{marginTop:'.9rem', marginBottom:'.4rem'}}>From Bucket</div>
-              <div className="row" style={{flexWrap:'wrap', gap:'.5rem'}}>
-                {GOAL_FUNDING_BUCKETS.map(id=>(
-                  <button type="button" key={id} className="chip" aria-pressed={addMoneyBucket===id} onClick={()=>setAddMoneyBucket(id)}>
-                    {bucketLookup[id] ? bucketLookup[id].name : id}
-                  </button>
-                ))}
-              </div>
-
               <div className="muted" style={{fontSize:'.78rem', marginTop:'.8rem', lineHeight:1.4}}>
-                This will eventually move money from a Fundora bucket into this goal.
+                This updates this goal&rsquo;s saved amount only. It does not move money from your Fundora buckets or affect your Home balance.
               </div>
 
-              {addMoneyConfirmed ? (
-                <div className="badge" style={{background:'var(--status-good-bg)', color:'var(--status-good-text)', width:'100%', justifyContent:'center', marginTop:'.85rem'}}>
-                  <CheckCircleIcon size={14}/> Added &mdash; demo only, not persisted
-                </div>
-              ) : (
-                <button type="button" className="btn-primary" style={{marginTop:'.85rem'}} onClick={confirmAddMoney}>Add to Goal</button>
-              )}
+              <button type="button" className="btn-primary" style={{marginTop:'.85rem', opacity: addMoneyNum>0 ? 1 : .5}} disabled={!(addMoneyNum>0)} onClick={confirmAddMoney}>Add to Saved</button>
             </div>
           )}
         </div>
