@@ -3297,7 +3297,7 @@ function SettingsSection({title, children}){
   );
 }
 
-function SettingsPage({navigate, income, setIncome, buckets, profile, setProfile}){
+function SettingsPage({navigate, income, setIncome, buckets, profile, setProfile, showAppToast}){
   const [toast, setToast] = useState('');
   function showToast(msg){
     setToast(msg);
@@ -3312,6 +3312,7 @@ function SettingsPage({navigate, income, setIncome, buckets, profile, setProfile
     e.preventDefault();
     setProfile({name: formName.trim() || profile.name, email: formEmail.trim() || profile.email});
     setProfileOpen(false);
+    showAppToast('Profile updated');
   }
 
   const [incomeSchedule, setIncomeSchedule] = useState('Monthly');
@@ -3328,6 +3329,7 @@ function SettingsPage({navigate, income, setIncome, buckets, profile, setProfile
     setIncomeSchedule(formSchedule);
     setPayday(formPayday);
     setIncomeOpen(false);
+    showAppToast('Monthly income updated');
   }
 
   const [currency, setCurrency] = useState('PHP');
@@ -3891,7 +3893,7 @@ function App(){
     transactions: <TransactionsPage income={income} setIncome={setIncome} buckets={buckets} setBuckets={setBuckets} transactions={transactions} setTransactions={setTransactions} showToast={showToast}/>,
     goals: <GoalsPage goals={goals} setGoals={setGoals} buckets={buckets}/>,
     insights: <InsightsPage navigate={navigate} income={income} buckets={buckets}/>,
-    settings: <SettingsPage navigate={navigate} income={income} setIncome={setIncome} buckets={buckets} profile={profile} setProfile={setProfile}/>,
+    settings: <SettingsPage navigate={navigate} income={income} setIncome={setIncome} buckets={buckets} profile={profile} setProfile={setProfile} showAppToast={showToast}/>,
     // Reports V1: read-only — intentionally receives no setters (no setIncome/setBuckets/setGoals/
     // setTransactions/setPeriods), so this route can never mutate financial data or period history.
     reports: <ReportsPage navigate={navigate} buckets={buckets} transactions={transactions} periods={periods}/>,
