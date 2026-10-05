@@ -215,6 +215,26 @@
     padding:.32rem .65rem; border-radius:var(--r-pill);
   }
 
+  /* ---------- shared app-level success toast ----------
+     Rendered once by App() as a sibling of the routed page and BottomNav (both of which are
+     direct children of #root === .phone-screen), so `position:absolute` here anchors to the
+     phone-screen box regardless of which page is active or how far .app-scroll is scrolled. */
+  .app-toast{
+    position:absolute; left:50%; bottom:calc(6rem + env(safe-area-inset-bottom,0px));
+    transform:translateX(-50%) translateY(0);
+    display:flex; align-items:center; gap:.4rem;
+    max-width:calc(100% - 2.4rem); width:max-content;
+    padding:.6rem 1rem; border-radius:var(--r-pill);
+    background:var(--status-good-bg); color:var(--status-good-text);
+    font-size:.82rem; font-weight:700; text-align:center;
+    box-shadow:var(--shadow-md); z-index:45; pointer-events:none;
+    animation:toast-in .2s ease-out;
+  }
+  @keyframes toast-in{
+    0%{opacity:0; transform:translateX(-50%) translateY(8px);}
+    100%{opacity:1; transform:translateX(-50%) translateY(0);}
+  }
+
   /* ---------- bottom nav ---------- */
   .bottom-nav{
     flex:0 0 auto; display:flex; align-items:center; justify-content:space-around;
@@ -1950,7 +1970,7 @@ function AmountField({id, value, onChange}){
 const toNum = v => parseFloat(v) || 0;
 const fmtSigned = n => n<0 ? '-'+PESO(Math.abs(n)) : PESO(n);
 
-function TransactionsPage({income, setIncome, buckets, setBuckets, transactions, setTransactions}){
+function TransactionsPage({income, setIncome, buckets, setBuckets, transactions, setTransactions, showToast}){
   const [tab, setTab] = useState('expense');
   const [saved, setSaved] = useState(false);
 
@@ -2012,6 +2032,7 @@ function TransactionsPage({income, setIncome, buckets, setBuckets, transactions,
       }, ...prev]);
       setExpenseAmount('');
       setNote('');
+      showToast('Expense added');
     } else if(tab==='income'){
       if(incomeNum<=0) return; // reject zero/invalid amounts
       setIncome(prev=>prev + incomeNum);
@@ -2019,10 +2040,14 @@ function TransactionsPage({income, setIncome, buckets, setBuckets, transactions,
         id:'txn-'+Date.now(), type:'income', amount:incomeNum, source:incomeSource, date,
       }, ...prev]);
       setIncomeAmount('');
+      showToast('Income added');
+    } else {
+      // Transfer intentionally does not mutate shared state yet — preview/demo only. The local
+      // `saved` badge below (NOT the shared app-level toast) is the only feedback for this path,
+      // since it never leads to a genuinely persisted action.
+      setSaved(true);
+      setTimeout(()=>setSaved(false), 2200);
     }
-    // Transfer intentionally does not mutate shared state yet — preview/demo only (see below).
-    setSaved(true);
-    setTimeout(()=>setSaved(false), 2200);
   }
   function selectFromBucket(id){
     setFromBucket(id);
@@ -3676,6 +3701,17 @@ function OnboardingPage({navigate, buckets}){
 /* ============================== app shell ============================== */
 function App(){
   const [route, navigate] = useRoute();
+  // Shared success toast — transient UI-only, never persisted, never part of saveState's payload.
+  // One message at a time: a new showToast() call replaces whatever is showing and restarts the
+  // auto-dismiss timer, rather than queuing or stacking.
+  const [toast, setToast] = useState(null);
+  const toastTimerRef = useRef(null);
+  function showToast(message){
+    if(toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast(message);
+    toastTimerRef.current = setTimeout(()=>{ setToast(null); toastTimerRef.current = null; }, 2200);
+  }
+  useEffect(() => () => { if(toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
   // Phase A1: read the persisted blob exactly once, synchronously, before any of the state below
   // is created — so the very first render already reflects either hydrated data or safe defaults,
   // never a default-then-overwrite flash. `persistenceOK` false means the stored value was
@@ -3848,7 +3884,7 @@ function App(){
     onboarding: <OnboardingPage navigate={navigate} buckets={buckets}/>,
     home: <HomePage navigate={navigate} income={income} buckets={buckets} transactions={transactions} editExpenseTransaction={editExpenseTransaction} deleteExpenseTransaction={deleteExpenseTransaction} editIncomeTransaction={editIncomeTransaction} deleteIncomeTransaction={deleteIncomeTransaction}/>,
     plan: <PlanPage buckets={buckets} setBuckets={setBuckets} income={income}/>,
-    transactions: <TransactionsPage income={income} setIncome={setIncome} buckets={buckets} setBuckets={setBuckets} transactions={transactions} setTransactions={setTransactions}/>,
+    transactions: <TransactionsPage income={income} setIncome={setIncome} buckets={buckets} setBuckets={setBuckets} transactions={transactions} setTransactions={setTransactions} showToast={showToast}/>,
     goals: <GoalsPage goals={goals} setGoals={setGoals} buckets={buckets}/>,
     insights: <InsightsPage navigate={navigate} income={income} buckets={buckets}/>,
     settings: <SettingsPage navigate={navigate} income={income} setIncome={setIncome} buckets={buckets} profile={profile} setProfile={setProfile}/>,
@@ -3860,6 +3896,11 @@ function App(){
     <>
       {pages[route]}
       {route !== 'onboarding' && <BottomNav route={route} navigate={navigate}/>}
+      {toast && (
+        <div className="app-toast" aria-live="polite">
+          <CheckCircleIcon size={15}/> {toast}
+        </div>
+      )}
     </>
   );
 }
