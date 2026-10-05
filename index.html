@@ -2449,6 +2449,19 @@ function GoalsPage({goals, setGoals, buckets, showToast}){
     setAddMoneyConfirmed(false);
     setEditingGoalId(null);
   }
+
+  // Delete Goal confirmation — only the id is stored; the goal itself is always looked up live so
+  // the confirm view can never show stale data. Mirrors PlanPage's Delete Bucket pattern.
+  const [deleteConfirmGoalId, setDeleteConfirmGoalId] = useState(null);
+  const deleteConfirmGoal = goals.find(g=>g.id===deleteConfirmGoalId) || null;
+  function confirmDeleteGoal(){
+    if(!deleteConfirmGoal) return;
+    const targetId = deleteConfirmGoal.id;
+    setGoals(gs=>gs.filter(g=>g.id!==targetId));
+    setDeleteConfirmGoalId(null);
+    closeDetail();
+    showToast('Goal deleted');
+  }
   function confirmAddMoney(){
     setAddMoneyConfirmed(true);
     setTimeout(()=>setAddMoneyConfirmed(false), 2200);
@@ -2706,6 +2719,13 @@ function GoalsPage({goals, setGoals, buckets, showToast}){
             <button type="button" className="btn-ghost" style={{flex:1, justifyContent:'center'}} onClick={()=>openEditGoal(detailGoal)}>Edit Goal</button>
           </div>
 
+          <button type="button" onClick={()=>setDeleteConfirmGoalId(detailGoal.id)} style={{
+            display:'block', width:'100%', textAlign:'center', background:'none', border:'1px solid var(--app-border)', borderRadius:'var(--r-md)',
+            color:'var(--status-bad-text)', fontWeight:700, fontSize:'.8rem', padding:'.55rem', marginTop:'.6rem'
+          }}>
+            Delete Goal
+          </button>
+
           {addMoneyOpen && (
             <div className="card" style={{marginTop:'1rem'}}>
               <label htmlFor="goal-add-amount" className="eyebrow" style={{display:'block', marginBottom:'.4rem'}}>Amount</label>
@@ -2739,6 +2759,27 @@ function GoalsPage({goals, setGoals, buckets, showToast}){
           )}
         </div>
         )}
+      </div>
+    )}
+
+    {deleteConfirmGoal && (
+      <div className="modal-backdrop" onClick={()=>setDeleteConfirmGoalId(null)}>
+        <div className="modal-sheet" onClick={e=>e.stopPropagation()}>
+          <div style={{width:36, height:4, borderRadius:99, background:'var(--app-border)', margin:'0 auto 1rem'}}/>
+          <div className="row" style={{gap:'.6rem'}}>
+            <div className="icon-btn" style={{background:'var(--status-bad-bg)', color:'var(--status-bad-icon)', border:'none', width:34, height:34, flexShrink:0}}>
+              <TrashIcon size={16}/>
+            </div>
+            <div style={{fontWeight:800, fontSize:'1rem'}}>Delete goal?</div>
+          </div>
+          <div className="muted" style={{fontSize:'.84rem', marginTop:'.9rem', lineHeight:1.5}}>
+            This permanently deletes &ldquo;{deleteConfirmGoal.name}&rdquo;. This action cannot be undone.
+          </div>
+          <div className="row" style={{gap:'.6rem', marginTop:'1.3rem'}}>
+            <button type="button" className="btn-ghost" style={{flex:1}} onClick={()=>setDeleteConfirmGoalId(null)}>Cancel</button>
+            <button type="button" className="btn-primary" style={{flex:1, background:'var(--status-bad-icon)', boxShadow:'none'}} onClick={confirmDeleteGoal}>Delete Goal</button>
+          </div>
+        </div>
       </div>
     )}
     </>
