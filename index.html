@@ -1149,7 +1149,7 @@ function groupMonthlyExpensesByCategory(monthTxns, buckets){
 }
 
 /* ============================== pages ============================== */
-function HomePage({navigate, income, buckets, transactions, editExpenseTransaction, deleteExpenseTransaction, editIncomeTransaction, deleteIncomeTransaction}){
+function HomePage({navigate, income, buckets, transactions, editExpenseTransaction, deleteExpenseTransaction, editIncomeTransaction, deleteIncomeTransaction, showToast}){
   const {liveBuckets, allSpent, totalRemaining, deficit, effectiveProtectedRemaining, availableToSpend} = deriveFinancialSummary(buckets, income);
   const segments = liveBuckets.map(b=>({pct:b.pct, color:b.color}));
   const totalPct = liveBuckets.reduce((s,b)=>s+b.pct,0);
@@ -1190,6 +1190,7 @@ function HomePage({navigate, income, buckets, transactions, editExpenseTransacti
       amount: incomeFormAmountNum, source: incomeFormSource, date: incomeFormDate,
     });
     setEditingIncomeTxn(null);
+    showToast('Transaction updated');
   }
 
   // Delete-impact preview reads the SAVED transaction (editingIncomeTxn), never the unsaved
@@ -1206,6 +1207,7 @@ function HomePage({navigate, income, buckets, transactions, editExpenseTransacti
     deleteIncomeTransaction(editingIncomeTxn.id);
     setConfirmDeleteIncomeOpen(false);
     setEditingIncomeTxn(null);
+    showToast('Transaction deleted');
   }
 
   function openEditExpense(txn){
@@ -1231,12 +1233,14 @@ function HomePage({navigate, income, buckets, transactions, editExpenseTransacti
       amount: formAmountNum, bucketId: formCategory, note: formNote, date: formDate,
     });
     setEditingTxn(null);
+    showToast('Transaction updated');
   }
   function confirmDeleteExpense(){
     if(!editingTxn) return;
     deleteExpenseTransaction(editingTxn.id);
     setConfirmDeleteOpen(false);
     setEditingTxn(null);
+    showToast('Transaction deleted');
   }
 
   return (
@@ -3882,7 +3886,7 @@ function App(){
 
   const pages = {
     onboarding: <OnboardingPage navigate={navigate} buckets={buckets}/>,
-    home: <HomePage navigate={navigate} income={income} buckets={buckets} transactions={transactions} editExpenseTransaction={editExpenseTransaction} deleteExpenseTransaction={deleteExpenseTransaction} editIncomeTransaction={editIncomeTransaction} deleteIncomeTransaction={deleteIncomeTransaction}/>,
+    home: <HomePage navigate={navigate} income={income} buckets={buckets} transactions={transactions} editExpenseTransaction={editExpenseTransaction} deleteExpenseTransaction={deleteExpenseTransaction} editIncomeTransaction={editIncomeTransaction} deleteIncomeTransaction={deleteIncomeTransaction} showToast={showToast}/>,
     plan: <PlanPage buckets={buckets} setBuckets={setBuckets} income={income}/>,
     transactions: <TransactionsPage income={income} setIncome={setIncome} buckets={buckets} setBuckets={setBuckets} transactions={transactions} setTransactions={setTransactions} showToast={showToast}/>,
     goals: <GoalsPage goals={goals} setGoals={setGoals} buckets={buckets}/>,
