@@ -2374,7 +2374,7 @@ function TransactionsPage({income, setIncome, buckets, setBuckets, transactions,
 
 const GOAL_FUNDING_BUCKETS = ['savings','living','bills','family','wants'];
 
-function GoalsPage({goals, setGoals, buckets}){
+function GoalsPage({goals, setGoals, buckets, showToast}){
   const bucketLookup = Object.fromEntries(buckets.map(b=>[b.id,b]));
 
   const [addOpen, setAddOpen] = useState(false);
@@ -2390,6 +2390,16 @@ function GoalsPage({goals, setGoals, buckets}){
   const [addMoneyBucket, setAddMoneyBucket] = useState('savings');
   const [addMoneyConfirmed, setAddMoneyConfirmed] = useState(false);
 
+  // Edit Goal — mirrors the existing New Goal form's fields/state shape exactly, seeded from the
+  // live goal (never a stale copy) and committed back via setGoals(gs=>gs.map(...)) by id, same
+  // pattern already proven for bucket rename in PlanPage.
+  const [editingGoalId, setEditingGoalId] = useState(null);
+  const [editFormName, setEditFormName] = useState('');
+  const [editFormTarget, setEditFormTarget] = useState('');
+  const [editFormSaved, setEditFormSaved] = useState('');
+  const [editFormDate, setEditFormDate] = useState('');
+  const [editFormPriority, setEditFormPriority] = useState(false);
+
   const totalSaved = goals.reduce((s,g)=>s+g.saved,0);
   const totalTarget = goals.reduce((s,g)=>s+g.target,0);
   const totalRemaining = totalTarget - totalSaved;
@@ -2400,16 +2410,44 @@ function GoalsPage({goals, setGoals, buckets}){
   const detailComplete = detailPct>=100;
   const detailRemaining = detailGoal ? Math.max(0, detailGoal.target-detailGoal.saved) : 0;
 
+  function openEditGoal(goal){
+    setEditFormName(goal.name);
+    setEditFormTarget(String(goal.target));
+    setEditFormSaved(String(goal.saved));
+    setEditFormDate(goal.targetDate || '');
+    setEditFormPriority(goal.priority);
+    setEditingGoalId(goal.id);
+  }
+  function closeEditGoal(){
+    setEditingGoalId(null);
+  }
+  function submitEditGoal(e){
+    e.preventDefault();
+    // Same minimal, non-blocking validation semantics as submitAddGoal — a blank name/target is
+    // defaulted, never rejected, so Edit Goal never introduces a stricter rule than Add Goal has.
+    const name = editFormName.trim() || 'New Goal';
+    const target = Math.max(1, parseInt(editFormTarget,10)||0);
+    const saved = Math.max(0, parseInt(editFormSaved,10)||0);
+    setGoals(gs=>gs.map(g=> g.id===editingGoalId ? {
+      ...g, name, target, saved,
+      targetDate: editFormDate.trim() || null, priority: editFormPriority,
+    } : g));
+    setEditingGoalId(null);
+    showToast('Goal updated');
+  }
+
   function openDetail(id){
     setDetailId(id);
     setAddMoneyOpen(false);
     setAddMoneyConfirmed(false);
     setAddMoneyAmount('500');
+    setEditingGoalId(null);
   }
   function closeDetail(){
     setDetailId(null);
     setAddMoneyOpen(false);
     setAddMoneyConfirmed(false);
+    setEditingGoalId(null);
   }
   function confirmAddMoney(){
     setAddMoneyConfirmed(true);
@@ -2430,6 +2468,7 @@ function GoalsPage({goals, setGoals, buckets}){
       targetDate: formDate.trim() || null, priority: formPriority,
     }]);
     setAddOpen(false);
+    showToast('Goal added');
   }
 
   return (
@@ -2564,6 +2603,53 @@ function GoalsPage({goals, setGoals, buckets}){
 
     {detailGoal && (
       <div className="modal-backdrop" onClick={closeDetail}>
+        {editingGoalId===detailGoal.id ? (
+          <form className="modal-sheet" onClick={e=>e.stopPropagation()} onSubmit={submitEditGoal}>
+            <div style={{width:36, height:4, borderRadius:99, background:'var(--app-border)', margin:'0 auto 1rem'}}/>
+            <div style={{fontWeight:800, fontSize:'1.05rem', marginBottom:'1.1rem'}}>Edit Goal</div>
+
+            <label htmlFor="edit-goal-name" className="eyebrow" style={{display:'block', marginBottom:'.4rem'}}>Goal Name</label>
+            <input id="edit-goal-name" value={editFormName} onChange={e=>setEditFormName(e.target.value)} placeholder="e.g. New Phone" style={{
+              width:'100%', padding:'.75rem .9rem', borderRadius:'var(--r-md)', border:'1px solid var(--app-border)',
+              background:'var(--app-surface)', fontSize:'.9rem', color:'var(--app-ink)'
+            }}/>
+
+            <label htmlFor="edit-goal-target" className="eyebrow" style={{display:'block', marginTop:'1rem', marginBottom:'.4rem'}}>Target Amount</label>
+            <div className="row" style={{gap:'.5rem', border:'1px solid var(--app-border)', borderRadius:'var(--r-md)', padding:'.7rem .9rem', background:'var(--app-surface)'}}>
+              <span style={{fontWeight:700}}>&#8369;</span>
+              <input id="edit-goal-target" inputMode="numeric" value={editFormTarget} onChange={e=>setEditFormTarget(e.target.value.replace(/[^0-9]/g,''))}
+                     placeholder="0" style={{flex:1, border:'none', outline:'none', background:'transparent', fontSize:'.9rem', color:'var(--app-ink)'}}/>
+            </div>
+
+            <label htmlFor="edit-goal-saved" className="eyebrow" style={{display:'block', marginTop:'1rem', marginBottom:'.4rem'}}>Already Saved</label>
+            <div className="row" style={{gap:'.5rem', border:'1px solid var(--app-border)', borderRadius:'var(--r-md)', padding:'.7rem .9rem', background:'var(--app-surface)'}}>
+              <span style={{fontWeight:700}}>&#8369;</span>
+              <input id="edit-goal-saved" inputMode="numeric" value={editFormSaved} onChange={e=>setEditFormSaved(e.target.value.replace(/[^0-9]/g,''))}
+                     placeholder="0" style={{flex:1, border:'none', outline:'none', background:'transparent', fontSize:'.9rem', color:'var(--app-ink)'}}/>
+            </div>
+
+            <label htmlFor="edit-goal-date" className="eyebrow" style={{display:'block', marginTop:'1rem', marginBottom:'.4rem'}}>Target Date (optional)</label>
+            <input id="edit-goal-date" value={editFormDate} onChange={e=>setEditFormDate(e.target.value)} placeholder="e.g. December 2026" style={{
+              width:'100%', padding:'.75rem .9rem', borderRadius:'var(--r-md)', border:'1px solid var(--app-border)',
+              background:'var(--app-surface)', fontSize:'.9rem', color:'var(--app-ink)'
+            }}/>
+
+            <div className="row between" style={{marginTop:'1.1rem'}}>
+              <div>
+                <div style={{fontWeight:700, fontSize:'.88rem'}}>Priority</div>
+                <div className="faint" style={{fontSize:'.74rem'}}>Flag this as a priority goal</div>
+              </div>
+              <button type="button" role="switch" aria-checked={editFormPriority} className="switch" onClick={()=>setEditFormPriority(v=>!v)}>
+                <span className="switch-knob"/>
+              </button>
+            </div>
+
+            <div className="row" style={{gap:'.6rem', marginTop:'1.4rem'}}>
+              <button type="button" className="btn-ghost" style={{flex:1}} onClick={closeEditGoal}>Cancel</button>
+              <button type="submit" className="btn-primary" style={{flex:1.5}}>Save Changes</button>
+            </div>
+          </form>
+        ) : (
         <div className="modal-sheet" onClick={e=>e.stopPropagation()}>
           <div style={{width:36, height:4, borderRadius:99, background:'var(--app-border)', margin:'0 auto 1rem'}}/>
 
@@ -2617,7 +2703,7 @@ function GoalsPage({goals, setGoals, buckets}){
 
           <div className="row" style={{gap:'.6rem', marginTop:'1.2rem'}}>
             <button type="button" className="btn-primary" style={{flex:1.4}} onClick={()=>setAddMoneyOpen(v=>!v)}>+ Add Money</button>
-            <button type="button" className="btn-soon" style={{flex:1, justifyContent:'center'}} title="Editing arrives in a later phase">Edit Goal</button>
+            <button type="button" className="btn-ghost" style={{flex:1, justifyContent:'center'}} onClick={()=>openEditGoal(detailGoal)}>Edit Goal</button>
           </div>
 
           {addMoneyOpen && (
@@ -2652,6 +2738,7 @@ function GoalsPage({goals, setGoals, buckets}){
             </div>
           )}
         </div>
+        )}
       </div>
     )}
     </>
@@ -3933,7 +4020,7 @@ function App(){
     home: <HomePage navigate={navigate} income={income} buckets={buckets} transactions={transactions} editExpenseTransaction={editExpenseTransaction} deleteExpenseTransaction={deleteExpenseTransaction} editIncomeTransaction={editIncomeTransaction} deleteIncomeTransaction={deleteIncomeTransaction} showToast={showToast}/>,
     plan: <PlanPage buckets={buckets} setBuckets={setBuckets} income={income} showToast={showToast}/>,
     transactions: <TransactionsPage income={income} setIncome={setIncome} buckets={buckets} setBuckets={setBuckets} transactions={transactions} setTransactions={setTransactions} showToast={showToast}/>,
-    goals: <GoalsPage goals={goals} setGoals={setGoals} buckets={buckets}/>,
+    goals: <GoalsPage goals={goals} setGoals={setGoals} buckets={buckets} showToast={showToast}/>,
     insights: <InsightsPage navigate={navigate} income={income} buckets={buckets}/>,
     settings: <SettingsPage navigate={navigate} income={income} setIncome={setIncome} buckets={buckets} profile={profile} setProfile={setProfile} showAppToast={showToast}/>,
     // Reports V1: read-only — intentionally receives no setters (no setIncome/setBuckets/setGoals/
