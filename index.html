@@ -1538,6 +1538,17 @@ function PlanPage({buckets, setBuckets, income, showToast}){
   const paceBucket = buckets.find(b=>b.id===paceBucketId) || null; // always read LIVE, never a stale snapshot
   const paceHasExisting = !!paceBucket && (paceBucket.paceDays!=null || paceBucket.paceStartDate!=null);
 
+  // Delete Bucket confirmation — a single tap must never delete outright. Only the id is stored;
+  // the bucket itself is always looked up live so the confirm view can never show stale data.
+  const [deleteConfirmBucketId, setDeleteConfirmBucketId] = useState(null);
+  const deleteConfirmBucket = buckets.find(b=>b.id===deleteConfirmBucketId) || null;
+  function confirmDeleteBucket(){
+    if(!deleteConfirmBucket) return;
+    removeBucket(deleteConfirmBucket.id);
+    setDeleteConfirmBucketId(null);
+    showToast('Bucket deleted');
+  }
+
   function openPaceModal(bucket){
     setPaceBucketId(bucket.id);
     setPaceFormDays(bucket.paceDays!=null ? String(bucket.paceDays) : '');
@@ -1758,7 +1769,7 @@ function PlanPage({buckets, setBuckets, income, showToast}){
                     <button type="button" className="stepper-btn" aria-label={`Rename ${b.name}`} onClick={()=>openEditModal(b)}>
                       <EditIcon size={13}/>
                     </button>
-                    <button type="button" className="stepper-btn" aria-label="Delete bucket" title="Delete bucket" onClick={()=>removeBucket(b.id)}>
+                    <button type="button" className="stepper-btn" aria-label="Delete bucket" title="Delete bucket" onClick={()=>setDeleteConfirmBucketId(b.id)}>
                       <TrashIcon size={13}/>
                     </button>
                   </div>
@@ -1952,6 +1963,32 @@ function PlanPage({buckets, setBuckets, income, showToast}){
             </div>
           </form>
         )}
+      </div>
+    )}
+
+    {deleteConfirmBucket && (
+      <div className="modal-backdrop" onClick={()=>setDeleteConfirmBucketId(null)}>
+        <div className="modal-sheet" onClick={e=>e.stopPropagation()}>
+          <div style={{width:36, height:4, borderRadius:99, background:'var(--app-border)', margin:'0 auto 1rem'}}/>
+          <div className="row" style={{gap:'.6rem'}}>
+            <div className="icon-btn" style={{background:'var(--status-bad-bg)', color:'var(--status-bad-icon)', border:'none', width:34, height:34, flexShrink:0}}>
+              <TrashIcon size={16}/>
+            </div>
+            <div style={{fontWeight:800, fontSize:'1rem'}}>Delete bucket?</div>
+          </div>
+          <div className="muted" style={{fontSize:'.84rem', marginTop:'.9rem', lineHeight:1.5}}>
+            This removes the &ldquo;{deleteConfirmBucket.name}&rdquo; bucket. Your transaction history will remain.
+          </div>
+          {deleteConfirmBucket.used > 0 && (
+            <div className="muted" style={{fontSize:'.84rem', marginTop:'.7rem', lineHeight:1.5, color:'var(--status-warn-text)'}}>
+              This bucket has spending this month. Deleting it will remove that spending from the totals shown on Home.
+            </div>
+          )}
+          <div className="row" style={{gap:'.6rem', marginTop:'1.3rem'}}>
+            <button type="button" className="btn-ghost" style={{flex:1}} onClick={()=>setDeleteConfirmBucketId(null)}>Cancel</button>
+            <button type="button" className="btn-primary" style={{flex:1, background:'var(--status-bad-icon)', boxShadow:'none'}} onClick={confirmDeleteBucket}>Delete Bucket</button>
+          </div>
+        </div>
       </div>
     )}
     </>
