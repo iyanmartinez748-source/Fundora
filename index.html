@@ -1521,7 +1521,7 @@ function StatTile({label, value, Icon, tint, ink}){
 const PLAN_CUSTOM_PALETTE = ['#7c5cff','#0891b2','#d6455d','#7a8f2c','#b8560f'];
 const clampPct = n => Math.min(100, Math.max(0, n));
 
-function PlanPage({buckets, setBuckets, income}){
+function PlanPage({buckets, setBuckets, income, showToast}){
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [formName, setFormName] = useState('');
@@ -1572,6 +1572,7 @@ function PlanPage({buckets, setBuckets, income}){
       paceStartDate: isNewPace ? paceLocalDateStr(new Date()) : b.paceStartDate,
     } : b));
     closePaceModal();
+    showToast('Budget pace updated');
   }
   function confirmRestartPace(){
     const targetId = paceBucketId;
@@ -1632,6 +1633,7 @@ function PlanPage({buckets, setBuckets, income}){
     if(editingId){
       setBuckets(bs=>bs.map(b=> b.id===editingId ? {...b, name: formName.trim() || b.name} : b));
       closeModal();
+      showToast('Bucket updated');
       return;
     }
     const name = formName.trim() || 'New Bucket';
@@ -1642,6 +1644,7 @@ function PlanPage({buckets, setBuckets, income}){
       color, Icon:TagIcon, custom:true, paceDays:null, paceStartDate:null,
     }]);
     closeModal();
+    showToast('Bucket added');
   }
 
   return (
@@ -3889,7 +3892,7 @@ function App(){
   const pages = {
     onboarding: <OnboardingPage navigate={navigate} buckets={buckets}/>,
     home: <HomePage navigate={navigate} income={income} buckets={buckets} transactions={transactions} editExpenseTransaction={editExpenseTransaction} deleteExpenseTransaction={deleteExpenseTransaction} editIncomeTransaction={editIncomeTransaction} deleteIncomeTransaction={deleteIncomeTransaction} showToast={showToast}/>,
-    plan: <PlanPage buckets={buckets} setBuckets={setBuckets} income={income}/>,
+    plan: <PlanPage buckets={buckets} setBuckets={setBuckets} income={income} showToast={showToast}/>,
     transactions: <TransactionsPage income={income} setIncome={setIncome} buckets={buckets} setBuckets={setBuckets} transactions={transactions} setTransactions={setTransactions} showToast={showToast}/>,
     goals: <GoalsPage goals={goals} setGoals={setGoals} buckets={buckets}/>,
     insights: <InsightsPage navigate={navigate} income={income} buckets={buckets}/>,
