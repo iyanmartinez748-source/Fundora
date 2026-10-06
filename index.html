@@ -2435,14 +2435,12 @@ function GoalsPage({goals, setGoals, buckets, showToast}){
   function openDetail(id){
     setDetailId(id);
     setAddMoneyOpen(false);
-    setAddMoneyConfirmed(false);
     setAddMoneyAmount('500');
     setEditingGoalId(null);
   }
   function closeDetail(){
     setDetailId(null);
     setAddMoneyOpen(false);
-    setAddMoneyConfirmed(false);
     setEditingGoalId(null);
   }
 
@@ -2464,6 +2462,7 @@ function GoalsPage({goals, setGoals, buckets, showToast}){
     setGoals(gs=>gs.map(g=> g.id===targetId ? {...g, saved: g.saved+addMoneyNum} : g));
     setAddMoneyAmount('');
     setAddMoneyOpen(false);
+    closeDetail();
     showToast('Added to goal');
   }
   function openAddGoal(){
