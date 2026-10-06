@@ -625,6 +625,9 @@ const ICON_KEY_BY_COMPONENT = new Map(Object.entries(ICON_REGISTRY).map(([key, C
 const iconKeyFor = (Icon) => ICON_KEY_BY_COMPONENT.get(Icon) || null;
 
 const STORAGE_KEY = 'fundora_data_v1';
+// Deliberately separate from STORAGE_KEY — Theme is cosmetic UI-only state, never financial data,
+// so it must never touch the schema-versioned financial blob or its hydration/validation logic.
+const THEME_STORAGE_KEY = 'fundora_theme_v1';
 const isFiniteNumber = (n) => typeof n === 'number' && Number.isFinite(n);
 const isPlainObject = (v) => v!==null && typeof v==='object' && !Array.isArray(v);
 const TXN_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -3481,16 +3484,23 @@ function SettingsPage({navigate, income, setIncome, buckets, profile, setProfile
   const [budgetOpen, setBudgetOpen] = useState(false);
   const totalPlanPct = buckets.reduce((s,b)=>s+b.pct,0);
 
-  const [theme, setTheme] = useState('system');
+  // Theme — the one source of truth lives here (only SettingsPage ever reads/sets it); a small
+  // dedicated localStorage key keeps the selection across reloads without touching the financial
+  // STORAGE_KEY blob/schema version at all. Any missing/invalid stored value safely falls back
+  // to 'system', never a crash or a silently-wrong theme.
+  const [theme, setTheme] = useState(()=>{
+    try {
+      const raw = localStorage.getItem(THEME_STORAGE_KEY);
+      return (raw==='light' || raw==='dark' || raw==='system') ? raw : 'system';
+    } catch(e) {
+      return 'system';
+    }
+  });
   useEffect(()=>{
     if(theme==='system') document.documentElement.removeAttribute('data-theme');
     else document.documentElement.setAttribute('data-theme', theme);
+    try { localStorage.setItem(THEME_STORAGE_KEY, theme); } catch(e) { /* non-fatal — theme still works for this session */ }
   }, [theme]);
-
-  const [notif, setNotif] = useState({budgetAlerts:true, goalReminders:true, monthlySummary:true});
-  function toggleNotif(key){ setNotif(n=>({...n, [key]:!n[key]})); }
-
-  const [biometric, setBiometric] = useState(false);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteAttempted, setDeleteAttempted] = useState(false);
@@ -3553,16 +3563,10 @@ function SettingsPage({navigate, income, setIncome, buckets, profile, setProfile
         </div>
         <div style={{padding:'.85rem 0', borderTop:'1px solid var(--app-border)'}}>
           <div style={{fontWeight:700, fontSize:'.88rem', marginBottom:'.7rem'}}>Notifications</div>
-          {[
-            {key:'budgetAlerts', label:'Budget Alerts'},
-            {key:'goalReminders', label:'Goal Reminders'},
-            {key:'monthlySummary', label:'Monthly Summary'},
-          ].map((n,i)=>(
-            <div key={n.key} className="row between" style={{padding: i?'.65rem 0 0':'0'}}>
-              <span className="muted" style={{fontSize:'.86rem'}}>{n.label}</span>
-              <button type="button" role="switch" aria-checked={notif[n.key]} className="switch" onClick={()=>toggleNotif(n.key)}>
-                <span className="switch-knob"/>
-              </button>
+          {['Budget Alerts','Goal Reminders','Monthly Summary'].map((label,i)=>(
+            <div key={label} className="row between" style={{padding: i?'.65rem 0 0':'0'}}>
+              <span className="muted" style={{fontSize:'.86rem'}}>{label}</span>
+              <span className="faint" style={{fontSize:'.76rem'}}>Coming soon</span>
             </div>
           ))}
         </div>
@@ -3577,15 +3581,12 @@ function SettingsPage({navigate, income, setIncome, buckets, profile, setProfile
             </div>
             <div>
               <div style={{fontWeight:700, fontSize:'.88rem'}}>Biometric Lock</div>
-              <div className="faint" style={{fontSize:'.76rem'}}>{biometric ? 'ON' : 'OFF'}</div>
+              <div className="faint" style={{fontSize:'.76rem'}}>Coming soon</div>
             </div>
           </div>
-          <button type="button" role="switch" aria-checked={biometric} className="switch" onClick={()=>setBiometric(v=>!v)}>
-            <span className="switch-knob"/>
-          </button>
         </div>
         <div className="muted" style={{fontSize:'.78rem', padding:'.8rem 0', lineHeight:1.4}}>
-          Use your device&rsquo;s supported security to help protect Fundora.
+          Device-based security to help protect Fundora is planned for a future update.
         </div>
       </SettingsSection>
 
