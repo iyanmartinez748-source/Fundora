@@ -2689,7 +2689,7 @@ function GoalsPage({goals, setGoals, buckets, showToast}){
             </div>
             <div>
               <div className="muted" style={{fontSize:'.74rem'}}>Progress</div>
-              <div className="tabular" style={{fontWeight:800, fontSize:'1.05rem', marginTop:'.15rem'}}>{detailPct}%</div>
+              <div className="tabular" style={{fontWeight:800, fontSize:'1.05rem', marginTop:'.15rem'}}>{Math.min(100,detailPct)}%</div>
             </div>
           </div>
 
