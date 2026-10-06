@@ -895,16 +895,6 @@ function saveState({income, buckets, goals, transactions, periods, profile}){
   }
 }
 
-const CURRENCIES = [
-  {code:'PHP', name:'Philippine Peso'},
-  {code:'USD', name:'US Dollar'},
-  {code:'EUR', name:'Euro'},
-  {code:'GBP', name:'British Pound'},
-  {code:'JPY', name:'Japanese Yen'},
-  {code:'AUD', name:'Australian Dollar'},
-  {code:'CAD', name:'Canadian Dollar'},
-  {code:'SGD', name:'Singapore Dollar'},
-];
 const INCOME_SCHEDULES = ['Weekly','Every 2 Weeks','Twice a Month','Monthly','Custom'];
 
 const INCOME_SOURCES = [
@@ -3488,15 +3478,6 @@ function SettingsPage({navigate, income, setIncome, buckets, profile, setProfile
     showAppToast('Monthly income updated');
   }
 
-  const [currency, setCurrency] = useState('PHP');
-  const [currencyOpen, setCurrencyOpen] = useState(false);
-  const [currencySearch, setCurrencySearch] = useState('');
-  const filteredCurrencies = CURRENCIES.filter(c=>{
-    const q = currencySearch.trim().toLowerCase();
-    return !q || c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q);
-  });
-  const currentCurrency = CURRENCIES.find(c=>c.code===currency);
-
   const [budgetOpen, setBudgetOpen] = useState(false);
   const totalPlanPct = buckets.reduce((s,b)=>s+b.pct,0);
 
@@ -3544,7 +3525,18 @@ function SettingsPage({navigate, income, setIncome, buckets, profile, setProfile
       <SettingsSection title="Money Setup">
         <SettingsRow Icon={WalletIcon} label="Monthly Income" value={PESO(income)} onClick={openIncome}/>
         <SettingsRow Icon={CalendarIcon} label="Income Schedule" value={incomeSchedule} onClick={openIncome}/>
-        <SettingsRow Icon={CoinsIcon} label="Currency" value={`${currentCurrency.code} — ${currentCurrency.name}`} onClick={()=>setCurrencyOpen(true)}/>
+        <div className="row between" style={{padding:'.85rem 0'}}>
+          <div className="row" style={{gap:'.75rem'}}>
+            <div className="icon-btn" style={{width:34, height:34, background:'var(--brand-tint)', color:'var(--brand)', border:'none'}}>
+              <CoinsIcon size={16}/>
+            </div>
+            <div>
+              <div style={{fontWeight:700, fontSize:'.88rem'}}>Currency</div>
+              <div className="faint" style={{fontSize:'.76rem'}}>More currencies coming soon.</div>
+            </div>
+          </div>
+          <span className="muted tabular" style={{fontSize:'.82rem'}}>PHP &mdash; Philippine Peso</span>
+        </div>
         <SettingsRow Icon={SlidersIcon} label="Budget Method" value="Custom Percentage Plan" onClick={()=>setBudgetOpen(true)}/>
       </SettingsSection>
 
@@ -3683,41 +3675,6 @@ function SettingsPage({navigate, income, setIncome, buckets, profile, setProfile
             <button type="submit" className="btn-primary" style={{flex:1.5}}>Save</button>
           </div>
         </form>
-      </div>
-    )}
-
-    {currencyOpen && (
-      <div className="modal-backdrop" onClick={()=>setCurrencyOpen(false)}>
-        <div className="modal-sheet" onClick={e=>e.stopPropagation()}>
-          <div style={{width:36, height:4, borderRadius:99, background:'var(--app-border)', margin:'0 auto 1rem'}}/>
-          <div className="row between">
-            <div style={{fontWeight:800, fontSize:'1.05rem'}}>Currency</div>
-            <button type="button" className="icon-btn" aria-label="Close" onClick={()=>setCurrencyOpen(false)}><XIcon size={15}/></button>
-          </div>
-
-          <input value={currencySearch} onChange={e=>setCurrencySearch(e.target.value)} placeholder="Search currency" style={{
-            width:'100%', padding:'.75rem .9rem', borderRadius:'var(--r-md)', border:'1px solid var(--app-border)',
-            background:'var(--app-surface)', fontSize:'.9rem', color:'var(--app-ink)', marginTop:'1rem'
-          }}/>
-
-          <div style={{marginTop:'.6rem', maxHeight:'46vh', overflowY:'auto'}}>
-            {filteredCurrencies.map(c=>(
-              <button type="button" key={c.code} className="settings-row" onClick={()=>{ setCurrency(c.code); setCurrencyOpen(false); }}>
-                <div>
-                  <div style={{fontWeight:700, fontSize:'.9rem'}}>{c.code} &mdash; {c.name}</div>
-                </div>
-                {currency===c.code && <CheckCircleIcon size={17} style={{color:'var(--brand)'}}/>}
-              </button>
-            ))}
-            {filteredCurrencies.length===0 && (
-              <div className="muted" style={{fontSize:'.85rem', padding:'1rem 0', textAlign:'center'}}>No currencies match &ldquo;{currencySearch}&rdquo;</div>
-            )}
-          </div>
-
-          <div className="muted" style={{fontSize:'.76rem', marginTop:'.9rem', lineHeight:1.4, borderTop:'1px solid var(--app-border)', paddingTop:'.9rem'}}>
-            Currency conversion is not included. Fundora displays your money in the currency you choose.
-          </div>
-        </div>
       </div>
     )}
 
